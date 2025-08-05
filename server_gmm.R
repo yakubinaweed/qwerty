@@ -203,7 +203,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       return(NULL)
     }
     if (input$gmm_hgb_col == "" || input$gmm_age_col == "") {
-      message_rv(list(text = "Please select the HGB and Age columns from the dropdown menus.", type = "error"))
+      message_rv(list(text = "Please select the columns from the dropdown menus.", type = "error"))
       return(NULL)
     }
     # End of custom checks
