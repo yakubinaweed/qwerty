@@ -106,15 +106,17 @@ assign_clusters <- function(df, gmm_model) {
 # Function to plot age vs HGB colored by cluster
 # It generates a ggplot scatter plot with confidence ellipses and cluster means.
 # @param df: The data frame with 'Age', 'HGB', 'Gender', and 'cluster' columns.
+# @param value_col_name: The name of the value column for dynamic labeling.
+# @param age_col_name: The name of the age column for dynamic labeling.
 # @param male_hgb_transformed: A boolean indicating if male HGB data was transformed.
 # @param female_hgb_transformed: A boolean indicating if female HGB data was transformed.
 # @return: A ggplot object.
-plot_age_hgb <- function(df, male_hgb_transformed, female_hgb_transformed) {
+plot_age_hgb <- function(df, value_col_name, age_col_name, male_hgb_transformed, female_hgb_transformed) {
   if (is.null(df) || nrow(df) == 0) {
     return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM data available for plotting.", size = 6, color = "grey50"))
   }
 
-  plot_title <- "HGB vs Age by Subpopulation Cluster"
+  plot_title <- paste(value_col_name, "vs", age_col_name, "by Subpopulation Cluster")
   plot_subtitle <- ""
   if (male_hgb_transformed) {
     plot_subtitle <- paste(plot_subtitle, "Male HGB transformed for GMM.", sep="\n")
@@ -137,7 +139,7 @@ plot_age_hgb <- function(df, male_hgb_transformed, female_hgb_transformed) {
     theme_minimal() +
     labs(title = plot_title,
          subtitle = plot_subtitle,
-         x = "Age", y = "HGB", color = "Cluster") +
+         x = age_col_name, y = value_col_name, color = "Cluster") +
     scale_color_brewer(palette = "Set1") +
     scale_fill_brewer(palette = "Set1") +
     theme(legend.position = "bottom")
@@ -526,11 +528,13 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM data available for plotting.", size = 6, color = "grey50"))
     }
     plot_age_hgb(plot_data,
-                 male_hgb_transformed = gmm_transformation_details_rv()$male_hgb_transformed,
-                 female_hgb_transformed = gmm_transformation_details_rv()$female_hgb_transformed)
-  })
+                value_col_name = input$gmm_hgb_col,
+                age_col_name = input$gmm_age_col,
+                male_hgb_transformed = gmm_transformation_details_rv()$male_hgb_transformed,
+                female_hgb_transformed = gmm_transformation_details_rv()$female_hgb_transformed)
+  })  
 
-  output$gmm_summary_output_bic <- renderPrint({
+ output$gmm_summary_output_bic <- renderPrint({
     plot_data <- gmm_processed_data_rv()$bic
     models <- gmm_models_bic_rv()
     
@@ -557,16 +561,16 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             sd_age <- sd(cluster_data$Age, na.rm = TRUE)
             
             cat(paste0("  Mean HGB: ", round(mean_hgb, 3), "\n"))
-            cat(paste0("  Mean Age: ", round(mean_age, 3), "\n"))
+            cat(paste0("  Mean ", input$gmm_age_col, ": ", round(mean_age, 3), "\n"))
             cat(paste0("  Std Dev HGB: ", round(sd_hgb, 3), "\n"))
-            cat(paste0("  Std Dev Age: ", round(sd_age, 3), "\n"))
+            cat(paste0("  Std Dev ", input$gmm_age_col, ": ", round(sd_age, 3), "\n"))
             
             if (!is.na(sd_age)) {
               lower_age <- round(mean_age - 2 * sd_age, 1)
               upper_age <- round(mean_age + 2 * sd_age, 1)
-              cat(paste0("  Estimated Age Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
+              cat(paste0("  Estimated ", input$gmm_age_col, " Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
             } else {
-              cat("  Estimated Age Range: N/A (Std Dev Age problematic)\n")
+              cat(paste0("  Estimated ", input$gmm_age_col, " Range: N/A (Std Dev Age problematic)\n"))
             }
             cat("\n")
         }
@@ -588,16 +592,16 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
                 sd_age <- sd(male_cluster_data$Age, na.rm = TRUE)
                 
                 cat(paste0("  Mean HGB: ", round(mean_hgb, 3), "\n"))
-                cat(paste0("  Mean Age: ", round(mean_age, 3), "\n"))
+                cat(paste0("  Mean ", input$gmm_age_col, ": ", round(mean_age, 3), "\n"))
                 cat(paste0("  Std Dev HGB: ", round(sd_hgb, 3), "\n"))
-                cat(paste0("  Std Dev Age: ", round(sd_age, 3), "\n"))
+                cat(paste0("  Std Dev ", input$gmm_age_col, ": ", round(sd_age, 3), "\n"))
                 
                 if (!is.na(sd_age)) {
                   lower_age <- round(mean_age - 2 * sd_age, 1)
                   upper_age <- round(mean_age + 2 * sd_age, 1)
-                  cat(paste0("  Estimated Age Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
+                  cat(paste0("  Estimated ", input$gmm_age_col, " Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
                 } else {
-                  cat("  Estimated Age Range: N/A (Std Dev Age problematic)\n")
+                  cat(paste0("  Estimated ", input$gmm_age_col, " Range: N/A (Std Dev Age problematic)\n"))
                 }
                 cat("\n")
             }
@@ -622,16 +626,16 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
                 sd_age <- sd(female_cluster_data$Age, na.rm = TRUE)
                 
                 cat(paste0("  Mean HGB: ", round(mean_hgb, 3), "\n"))
-                cat(paste0("  Mean Age: ", round(mean_age, 3), "\n"))
+                cat(paste0("  Mean ", input$gmm_age_col, ": ", round(mean_age, 3), "\n"))
                 cat(paste0("  Std Dev HGB: ", round(sd_hgb, 3), "\n"))
-                cat(paste0("  Std Dev Age: ", round(sd_age, 3), "\n"))
+                cat(paste0("  Std Dev ", input$gmm_age_col, ": ", round(sd_age, 3), "\n"))
                 
                 if (!is.na(sd_age)) {
                   lower_age <- round(mean_age - 2 * sd_age, 1)
                   upper_age <- round(mean_age + 2 * sd_age, 1)
-                  cat(paste0("  Estimated Age Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
+                  cat(paste0("  Estimated ", input$gmm_age_col, " Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
                 } else {
-                  cat("  Estimated Age Range: N/A (Std Dev Age problematic)\n")
+                  cat(paste0("  Estimated ", input$gmm_age_col, " Range: N/A (Std Dev Age problematic)\n"))
                 }
                 cat("\n")
             }
