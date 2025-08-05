@@ -117,13 +117,6 @@ plot_age_hgb <- function(df, value_col_name, age_col_name, male_hgb_transformed,
   }
 
   plot_title <- paste(value_col_name, "vs", age_col_name, "by Subpopulation Cluster")
-  plot_subtitle <- ""
-  if (male_hgb_transformed) {
-    plot_subtitle <- paste(plot_subtitle, "Male HGB transformed for GMM.", sep="\n")
-  }
-  if (female_hgb_transformed) {
-    plot_subtitle <- paste(plot_subtitle, "Female HGB transformed for GMM.", sep="\n")
-  }
   
   cluster_means <- df %>%
     group_by(Gender, cluster) %>%
@@ -138,11 +131,22 @@ plot_age_hgb <- function(df, value_col_name, age_col_name, male_hgb_transformed,
     facet_wrap(~Gender) +
     theme_minimal() +
     labs(title = plot_title,
-         subtitle = plot_subtitle,
          x = age_col_name, y = value_col_name, color = "Cluster") +
     scale_color_brewer(palette = "Set1") +
     scale_fill_brewer(palette = "Set1") +
-    theme(legend.position = "bottom")
+    theme(
+      plot.title = element_text(size = 20, face = "bold", hjust = 0.5, margin = margin(b = 20)),
+      strip.text = element_text(size = 14, face = "bold", color = "grey20"),
+      axis.title.x = element_text(size = 14, margin = margin(t = 10)),
+      axis.title.y = element_text(size = 14, margin = margin(r = 10)),
+      axis.text = element_text(size = 11, color = "grey30"),
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10, color = "grey30"),
+      legend.position = "bottom",
+      legend.background = element_rect(fill = "white", color = "grey90", size = 0.5, linetype = "solid"),
+      panel.grid.major = element_line(color = "grey90", size = 0.5),
+      panel.grid.minor = element_blank()
+    )
 }
 
 # =========================================================================
