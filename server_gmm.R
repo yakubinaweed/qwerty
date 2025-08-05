@@ -197,7 +197,16 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
   # Observer for GMM analysis button
   # This is the core logic for the GMM tab, running the analysis with progress updates
   observeEvent(input$run_gmm_analysis_btn, {
-    req(gmm_uploaded_data_rv(), input$gmm_hgb_col, input$gmm_age_col)
+    # Custom checks for user-friendly error messages
+    if (is.null(gmm_uploaded_data_rv())) {
+      message_rv(list(text = "Please upload an Excel file first.", type = "error"))
+      return(NULL)
+    }
+    if (input$gmm_hgb_col == "" || input$gmm_age_col == "") {
+      message_rv(list(text = "Please select the HGB and Age columns from the dropdown menus.", type = "error"))
+      return(NULL)
+    }
+    # End of custom checks
 
     # Check for gender choice requirement only if a gender column is selected
     if (input$gmm_gender_col != "") {
@@ -208,6 +217,12 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       message_rv(list(text = "An analysis is already running. Please wait.", type = "warning"))
       return(NULL)
     }
+
+    # Start by clearing reactive values, which will trigger the UI to update with a blank state
+    gmm_processed_data_rv(NULL)
+    gmm_models_bic_rv(list(male=NULL, female=NULL))
+    message_rv(list(text = "Starting new GMM analysis...", type = "info"))
+
 
     analysis_running_rv(TRUE)
     shinyjs::disable("tabs")
@@ -262,6 +277,14 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
         gmm_data <- gmm_data %>%
           mutate(Gender = "Combined")
       }
+      
+      # Additional check: If filtering by gender results in an empty dataset
+      if (nrow(gmm_data) == 0) {
+        message_rv(list(text = "Filtered dataset is empty after gender selection. Please check the data or gender column.", type = "warning"))
+        analysis_running_rv(FALSE)
+        shinyjs::enable("tabs")
+        return(NULL)
+      }
 
 
       combined_clustered_data <- tibble()
@@ -286,11 +309,12 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
           incProgress(0.2, detail = "Running GMM for Combined data (BIC)...")
           tryCatch({
             combined_gmm_model_bic <- run_gmm_with_criterion(data_to_process %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
-            if (!is.null(combined_gmm_model_bic)) {
-              data_clustered <- assign_clusters(data_to_process, combined_gmm_model_bic)
-              data_clustered$cluster <- as.factor(data_clustered$cluster)
-              combined_clustered_data <- bind_rows(combined_clustered_data, data_clustered %>% dplyr::select(HGB, Age, Gender, cluster))
+            if (is.null(combined_gmm_model_bic)) {
+              stop("GMM model for combined data could not be generated.")
             }
+            data_clustered <- assign_clusters(data_to_process, combined_gmm_model_bic)
+            data_clustered$cluster <- as.factor(data_clustered$cluster)
+            combined_clustered_data <- bind_rows(combined_clustered_data, data_clustered %>% dplyr::select(HGB, Age, Gender, cluster))
           }, error = function(e) {
             message_rv(list(text = paste("Error running BIC GMM for combined data:", e$message), type = "error"))
           })
@@ -308,11 +332,12 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
               incProgress(0.2, detail = "Running GMM for Male data (BIC)...")
               tryCatch({
                 male_gmm_model_bic <- run_gmm_with_criterion(male_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
-                if (!is.null(male_gmm_model_bic)) {
-                  male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
-                  male_data_bic$cluster <- as.factor(male_data_bic$cluster)
-                  combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+                if (is.null(male_gmm_model_bic)) {
+                  stop("GMM model for male data could not be generated.")
                 }
+                male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
+                male_data_bic$cluster <- as.factor(male_data_bic$cluster)
+                combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
               }, error = function(e) {
                 message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
               })
@@ -329,11 +354,12 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
               incProgress(0.2, detail = "Running GMM for Female data (BIC)...")
               tryCatch({
                 female_gmm_model_bic <- run_gmm_with_criterion(female_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
-                if (!is.null(female_gmm_model_bic)) {
-                  female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
-                  female_data_bic$cluster <- as.factor(female_data_bic$cluster)
-                  combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+                if (is.null(female_gmm_model_bic)) {
+                  stop("GMM model for female data could not be generated.")
                 }
+                female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
+                female_data_bic$cluster <- as.factor(female_data_bic$cluster)
+                combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
               }, error = function(e) {
                 message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
               })
@@ -353,14 +379,20 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             incProgress(0.2, detail = "Running GMM for Male data (BIC)...")
             tryCatch({
               male_gmm_model_bic <- run_gmm_with_criterion(male_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
-              if (!is.null(male_gmm_model_bic)) {
-                male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
-                male_data_bic$cluster <- as.factor(male_data_bic$cluster)
-                combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+              if (is.null(male_gmm_model_bic)) {
+                stop("GMM model for male data could not be generated.")
               }
+              male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
+              male_data_bic$cluster <- as.factor(male_data_bic$cluster)
+              combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
             }, error = function(e) {
               message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
             })
+          } else {
+              message_rv(list(text = "No male data found after filtering. Please check the gender column and selection.", type = "warning"))
+              analysis_running_rv(FALSE)
+              shinyjs::enable("tabs")
+              return(NULL)
           }
 
       } else if (gender_choice == "Female") {
@@ -376,14 +408,20 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             incProgress(0.2, detail = "Running GMM for Female data (BIC)...")
             tryCatch({
               female_gmm_model_bic <- run_gmm_with_criterion(female_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
-              if (!is.null(female_gmm_model_bic)) {
-                female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
-                female_data_bic$cluster <- as.factor(female_data_bic$cluster)
-                combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+              if (is.null(female_gmm_model_bic)) {
+                stop("GMM model for female data could not be generated.")
               }
+              female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
+              female_data_bic$cluster <- as.factor(female_data_bic$cluster)
+              combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
             }, error = function(e) {
               message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
             })
+          } else {
+              message_rv(list(text = "No female data found after filtering. Please check the gender column and selection.", type = "warning"))
+              analysis_running_rv(FALSE)
+              shinyjs::enable("tabs")
+              return(NULL)
           }
       }
       
@@ -413,12 +451,12 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
 
   # Observer for the Reset button on the GMM tab
   observeEvent(input$reset_gmm_analysis_btn, {
+    # Reset all reactive values, allowing the UI to update automatically
     gmm_uploaded_data_rv(NULL)
     gmm_processed_data_rv(NULL)
     gmm_transformation_details_rv(list(male_hgb_transformed = FALSE, female_hgb_transformed = FALSE))
     gmm_models_bic_rv(list(male = NULL, female = NULL))
     shinyjs::reset("gmm_file_upload")
-    output$gmm_results_ui <- renderUI(NULL)
     message_rv(list(text = "GMM data and results reset.", type = "info"))
     
     updateSelectInput(session, "gmm_hgb_col", choices = c("None" = ""), selected = "")
@@ -429,8 +467,13 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
   output$gmm_results_ui <- renderUI({
     plot_data_bic <- gmm_processed_data_rv()$bic
 
-    if (is.null(plot_data_bic)) {
-      return(NULL)
+    if (is.null(plot_data_bic) || nrow(plot_data_bic) == 0) {
+      return(tagList(
+        div(class = "output-box",
+            h4("BIC Criterion Results"),
+            p("No GMM results available. Please upload a file and run the analysis.")
+        )
+      ))
     }
 
     tagList(
@@ -452,16 +495,26 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
     has_female_model <- !is.null(models$female)
 
     if (has_combined_model) {
-      plot(models$combined, what = "BIC", main = "Combined - BIC Plot")
-    } else if (has_male_model && has_female_model) {
+      if (!is.null(models$combined) && !inherits(models$combined, "try-error")) {
+        plot(models$combined, what = "BIC", main = "Combined - BIC Plot")
+      } else {
+        return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "GMM model for combined data was not generated.", size = 6, color = "grey50"))
+      }
+    } else if (has_male_model || has_female_model) {
       par(mfrow = c(1, 2))
-      plot(models$male, what = "BIC", main = "Male - BIC Plot")
-      plot(models$female, what = "BIC", main = "Female - BIC Plot")
+      if (has_male_model && !inherits(models$male, "try-error")) {
+        plot(models$male, what = "BIC", main = "Male - BIC Plot")
+      } else {
+        plot.new()
+        text(0.5, 0.5, "GMM model for male data was not generated.")
+      }
+      if (has_female_model && !inherits(models$female, "try-error")) {
+        plot(models$female, what = "BIC", main = "Female - BIC Plot")
+      } else {
+        plot.new()
+        text(0.5, 0.5, "GMM model for female data was not generated.")
+      }
       par(mfrow = c(1, 1))
-    } else if (has_male_model) {
-      plot(models$male, what = "BIC", main = "Male - BIC Plot")
-    } else if (has_female_model) {
-      plot(models$female, what = "BIC", main = "Female - BIC Plot")
     } else {
        return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM models available for plotting.", size = 6, color = "grey50"))
     }
