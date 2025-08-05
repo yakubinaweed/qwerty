@@ -173,6 +173,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       message_rv(list(text = "GMM data uploaded successfully.", type = "success"))
 
       col_names <- colnames(data)
+      # Add "None" as a choice for the gender column
       all_col_choices_with_none <- c("None" = "", col_names)
       
       updateSelectInput(session, "gmm_hgb_col", choices = all_col_choices_with_none, selected = guess_column(col_names, c("HGB", "hgb", "HB", "hb")))
@@ -185,10 +186,23 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
     })
   })
 
+  # Renders the gender choice radio buttons only if a gender column is selected
+  output$gmm_gender_choice_ui <- renderUI({
+    req(input$gmm_gender_col)
+    if (input$gmm_gender_col != "") {
+      radioButtons(inputId = "gmm_gender_choice", label = "Select Gender Analysis:", choices = c("Male" = "Male", "Female" = "Female", "Both" = "Both"), selected = "Both", inline = TRUE)
+    }
+  })
+
   # Observer for GMM analysis button
   # This is the core logic for the GMM tab, running the analysis with progress updates
   observeEvent(input$run_gmm_analysis_btn, {
-    req(gmm_uploaded_data_rv(), input$gmm_hgb_col, input$gmm_age_col, input$gmm_gender_col, input$gmm_gender_choice)
+    req(gmm_uploaded_data_rv(), input$gmm_hgb_col, input$gmm_age_col)
+
+    # Check for gender choice requirement only if a gender column is selected
+    if (input$gmm_gender_col != "") {
+      req(input$gmm_gender_choice)
+    }
 
     if (analysis_running_rv()) {
       message_rv(list(text = "An analysis is already running. Please wait.", type = "warning"))
@@ -205,18 +219,26 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       hgb_col <- input$gmm_hgb_col
       age_col <- input$gmm_age_col
       gender_col <- input$gmm_gender_col
-      gender_choice <- input$gmm_gender_choice
+      gender_choice <- if (gender_col == "") "None" else input$gmm_gender_choice
 
-      if (!all(c(hgb_col, age_col, gender_col) %in% names(data))) {
-        message_rv(list(text = "Selected columns not found in data. Please check selections.", type = "error"))
+      if (!all(c(hgb_col, age_col) %in% names(data))) {
+        message_rv(list(text = "Selected HGB or Age column not found in data. Please check selections.", type = "error"))
         analysis_running_rv(FALSE)
         shinyjs::enable("tabs")
         return(NULL)
       }
 
+      # Correctly handle dynamic column selection for dplyr::select
+      cols_to_select_syms <- rlang::syms(c(hgb_col, age_col))
+      if (gender_col != "") {
+        cols_to_select_syms <- c(cols_to_select_syms, rlang::sym(gender_col))
+      }
+
       gmm_data <- data %>%
-        dplyr::select(HGB = !!sym(hgb_col), Age = !!sym(age_col), Gender_orig = !!sym(gender_col)) %>%
+        dplyr::select(!!!cols_to_select_syms) %>%
+        setNames(c("HGB", "Age", if (gender_col != "") "Gender_orig")) %>%
         na.omit()
+
 
       if (nrow(gmm_data) == 0) {
         message_rv(list(text = "No complete rows for GMM after NA removal. Check data or selections.", type = "error"))
@@ -227,69 +249,151 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
 
       incProgress(0.2, detail = "Splitting data by gender and transforming...")
 
-      gmm_data <- gmm_data %>%
-        mutate(Gender = case_when(
-          grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
-          grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", Gender_orig, ignore.case = TRUE) ~ "Female",
-          TRUE ~ "Other"
-        )) %>%
-        filter(Gender %in% c("Male", "Female"))
+      if (gender_col != "") {
+        gmm_data <- gmm_data %>%
+          mutate(Gender = case_when(
+            grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
+            grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", Gender_orig, ignore.case = TRUE) ~ "Female",
+            TRUE ~ "Other"
+          )) %>%
+          filter(Gender %in% c("Male", "Female"))
+      } else {
+        # If no gender column is provided, assign a single "Combined" group
+        gmm_data <- gmm_data %>%
+          mutate(Gender = "Combined")
+      }
+
 
       combined_clustered_data <- tibble()
       male_hgb_transformed_flag <- FALSE
       female_hgb_transformed_flag <- FALSE
+      combined_gmm_model_bic <- NULL
       male_gmm_model_bic <- NULL
       female_gmm_model_bic <- NULL
 
-      # Process Male data if selected
-      if (gender_choice %in% c("Both", "Male")) {
-        male_data <- gmm_data %>% filter(Gender == "Male")
-        if (nrow(male_data) > 0) {
-          yj_result_male <- apply_conditional_yeo_johnson(male_data$HGB)
-          male_data$HGB_transformed <- yj_result_male$transformed_data
-          male_hgb_transformed_flag <- yj_result_male$transformation_applied
-          male_data$HGB_z <- z_transform(male_data$HGB_transformed)
-          male_data$Age_z <- z_transform(male_data$Age)
-          
-          incProgress(0.2, detail = "Running GMM for Male data (BIC)...")
-          tryCatch({
-            male_gmm_model_bic <- run_gmm_with_criterion(male_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
-            if (!is.null(male_gmm_model_bic)) {
-              male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
-              male_data_bic$cluster <- as.factor(male_data_bic$cluster)
-              combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
-            }
-          }, error = function(e) {
-            message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
-          })
-        }
-      }
+      # Process data based on gender selection
+      if (gender_col == "" || gender_choice == "Both") {
+        # This block now handles both no-gender and "both" gender cases
+        if (gender_col == "") {
+          message("Running GMM on combined data...")
+          data_to_process <- gmm_data
+          yj_result <- apply_conditional_yeo_johnson(data_to_process$HGB)
+          data_to_process$HGB_transformed <- yj_result$transformed_data
+          male_hgb_transformed_flag <- yj_result$transformation_applied # Use male flag for combined
+          data_to_process$HGB_z <- z_transform(data_to_process$HGB_transformed)
+          data_to_process$Age_z <- z_transform(data_to_process$Age)
 
-      # Process Female data if selected
-      if (gender_choice %in% c("Both", "Female")) {
-        female_data <- gmm_data %>% filter(Gender == "Female")
-        if (nrow(female_data) > 0) {
-          yj_result_female <- apply_conditional_yeo_johnson(female_data$HGB)
-          female_data$HGB_transformed <- yj_result_female$transformed_data
-          female_hgb_transformed_flag <- yj_result_female$transformation_applied
-          female_data$HGB_z <- z_transform(female_data$HGB_transformed)
-          female_data$Age_z <- z_transform(female_data$Age)
-          
-          incProgress(0.2, detail = "Running GMM for Female data (BIC)...")
+          incProgress(0.2, detail = "Running GMM for Combined data (BIC)...")
           tryCatch({
-            female_gmm_model_bic <- run_gmm_with_criterion(female_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
-            if (!is.null(female_gmm_model_bic)) {
-              female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
-              female_data_bic$cluster <- as.factor(female_data_bic$cluster)
-              combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+            combined_gmm_model_bic <- run_gmm_with_criterion(data_to_process %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
+            if (!is.null(combined_gmm_model_bic)) {
+              data_clustered <- assign_clusters(data_to_process, combined_gmm_model_bic)
+              data_clustered$cluster <- as.factor(data_clustered$cluster)
+              combined_clustered_data <- bind_rows(combined_clustered_data, data_clustered %>% dplyr::select(HGB, Age, Gender, cluster))
             }
           }, error = function(e) {
-            message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
+            message_rv(list(text = paste("Error running BIC GMM for combined data:", e$message), type = "error"))
           })
+        } else {
+            # Existing logic for processing both genders separately
+            # Process Male data if selected
+            male_data <- gmm_data %>% filter(Gender == "Male")
+            if (nrow(male_data) > 0) {
+              yj_result_male <- apply_conditional_yeo_johnson(male_data$HGB)
+              male_data$HGB_transformed <- yj_result_male$transformed_data
+              male_hgb_transformed_flag <- yj_result_male$transformation_applied
+              male_data$HGB_z <- z_transform(male_data$HGB_transformed)
+              male_data$Age_z <- z_transform(male_data$Age)
+              
+              incProgress(0.2, detail = "Running GMM for Male data (BIC)...")
+              tryCatch({
+                male_gmm_model_bic <- run_gmm_with_criterion(male_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
+                if (!is.null(male_gmm_model_bic)) {
+                  male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
+                  male_data_bic$cluster <- as.factor(male_data_bic$cluster)
+                  combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+                }
+              }, error = function(e) {
+                message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
+              })
+            }
+            # Process Female data if selected
+            female_data <- gmm_data %>% filter(Gender == "Female")
+            if (nrow(female_data) > 0) {
+              yj_result_female <- apply_conditional_yeo_johnson(female_data$HGB)
+              female_data$HGB_transformed <- yj_result_female$transformed_data
+              female_hgb_transformed_flag <- yj_result_female$transformation_applied
+              female_data$HGB_z <- z_transform(female_data$HGB_transformed)
+              female_data$Age_z <- z_transform(female_data$Age)
+              
+              incProgress(0.2, detail = "Running GMM for Female data (BIC)...")
+              tryCatch({
+                female_gmm_model_bic <- run_gmm_with_criterion(female_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
+                if (!is.null(female_gmm_model_bic)) {
+                  female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
+                  female_data_bic$cluster <- as.factor(female_data_bic$cluster)
+                  combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+                }
+              }, error = function(e) {
+                message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
+              })
+            }
         }
+
+      } else if (gender_choice == "Male") {
+          # Process Male data if selected
+          male_data <- gmm_data %>% filter(Gender == "Male")
+          if (nrow(male_data) > 0) {
+            yj_result_male <- apply_conditional_yeo_johnson(male_data$HGB)
+            male_data$HGB_transformed <- yj_result_male$transformed_data
+            male_hgb_transformed_flag <- yj_result_male$transformation_applied
+            male_data$HGB_z <- z_transform(male_data$HGB_transformed)
+            male_data$Age_z <- z_transform(male_data$Age)
+            
+            incProgress(0.2, detail = "Running GMM for Male data (BIC)...")
+            tryCatch({
+              male_gmm_model_bic <- run_gmm_with_criterion(male_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
+              if (!is.null(male_gmm_model_bic)) {
+                male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
+                male_data_bic$cluster <- as.factor(male_data_bic$cluster)
+                combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+              }
+            }, error = function(e) {
+              message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
+            })
+          }
+
+      } else if (gender_choice == "Female") {
+          # Process Female data if selected
+          female_data <- gmm_data %>% filter(Gender == "Female")
+          if (nrow(female_data) > 0) {
+            yj_result_female <- apply_conditional_yeo_johnson(female_data$HGB)
+            female_data$HGB_transformed <- yj_result_female$transformed_data
+            female_hgb_transformed_flag <- yj_result_female$transformation_applied
+            female_data$HGB_z <- z_transform(female_data$HGB_transformed)
+            female_data$Age_z <- z_transform(female_data$Age)
+            
+            incProgress(0.2, detail = "Running GMM for Female data (BIC)...")
+            tryCatch({
+              female_gmm_model_bic <- run_gmm_with_criterion(female_data %>% dplyr::select(HGB = HGB_z, Age = Age_z), criterion = "BIC")
+              if (!is.null(female_gmm_model_bic)) {
+                female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
+                female_data_bic$cluster <- as.factor(female_data_bic$cluster)
+                combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(HGB, Age, Gender, cluster))
+              }
+            }, error = function(e) {
+              message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
+            })
+          }
       }
       
-      gmm_models_bic_rv(list(male = male_gmm_model_bic, female = female_gmm_model_bic))
+      # Update reactive values with the correct models based on whether gender was selected
+      if (gender_col == "") {
+        gmm_models_bic_rv(list(combined = combined_gmm_model_bic))
+      } else {
+        gmm_models_bic_rv(list(male = male_gmm_model_bic, female = female_gmm_model_bic))
+      }
+      
       gmm_transformation_details_rv(list(male_hgb_transformed = male_hgb_transformed_flag, female_hgb_transformed = female_hgb_transformed_flag))
 
       if (nrow(combined_clustered_data) > 0) {
@@ -341,15 +445,15 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
 
   output$gmm_model_selection_plot_bic <- renderPlot({
     models <- gmm_models_bic_rv()
-    if (is.null(models$male) && is.null(models$female)) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM models available for plotting.", size = 6, color = "grey50"))
-    }
     
-    # Check if there are models to plot before attempting to set up a two-panel plot
+    # Handle the "Combined" case for models
+    has_combined_model <- !is.null(models$combined)
     has_male_model <- !is.null(models$male)
     has_female_model <- !is.null(models$female)
 
-    if (has_male_model && has_female_model) {
+    if (has_combined_model) {
+      plot(models$combined, what = "BIC", main = "Combined - BIC Plot")
+    } else if (has_male_model && has_female_model) {
       par(mfrow = c(1, 2))
       plot(models$male, what = "BIC", main = "Male - BIC Plot")
       plot(models$female, what = "BIC", main = "Female - BIC Plot")
@@ -383,21 +487,21 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
 
     cat("--- GMM Analysis Summary (BIC Criterion) ---\n")
     
-    if (!is.null(models$male) && !inherits(models$male, "try-error")) {
-        cat("\n--- Male Subpopulations ---\n")
+    if (!is.null(models$combined) && !inherits(models$combined, "try-error")) {
+        cat("\n--- Combined Subpopulations ---\n")
         
-        print(summary(models$male))
+        print(summary(models$combined))
 
-        num_clusters <- models$male$G
+        num_clusters <- models$combined$G
         for (i in 1:num_clusters) {
             cat(paste0("Cluster ", i, ":\n"))
-            cat(paste0("  Proportion: ", round(models$male$parameters$pro[i], 3), "\n"))
+            cat(paste0("  Proportion: ", round(models$combined$parameters$pro[i], 3), "\n"))
             
-            male_cluster_data <- plot_data %>% filter(Gender == "Male", cluster == i)
-            mean_hgb <- mean(male_cluster_data$HGB, na.rm = TRUE)
-            mean_age <- mean(male_cluster_data$Age, na.rm = TRUE)
-            sd_hgb <- sd(male_cluster_data$HGB, na.rm = TRUE)
-            sd_age <- sd(male_cluster_data$Age, na.rm = TRUE)
+            cluster_data <- plot_data %>% filter(Gender == "Combined", cluster == i)
+            mean_hgb <- mean(cluster_data$HGB, na.rm = TRUE)
+            mean_age <- mean(cluster_data$Age, na.rm = TRUE)
+            sd_hgb <- sd(cluster_data$HGB, na.rm = TRUE)
+            sd_age <- sd(cluster_data$Age, na.rm = TRUE)
             
             cat(paste0("  Mean HGB: ", round(mean_hgb, 3), "\n"))
             cat(paste0("  Mean Age: ", round(mean_age, 3), "\n"))
@@ -414,41 +518,73 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             cat("\n")
         }
     } else {
-        cat("No male subpopulations detected.\n")
-    }
-    
-    if (!is.null(models$female) && !inherits(models$female, "try-error")) {
-        cat("\n--- Female Subpopulations ---\n")
-        
-        print(summary(models$female))
+        if (!is.null(models$male) && !inherits(models$male, "try-error")) {
+            cat("\n--- Male Subpopulations ---\n")
+            
+            print(summary(models$male))
 
-        num_clusters <- models$female$G
-        for (i in 1:num_clusters) {
-            cat(paste0("Cluster ", i, ":\n"))
-            cat(paste0("  Proportion: ", round(models$female$parameters$pro[i], 3), "\n"))
-            
-            female_cluster_data <- plot_data %>% filter(Gender == "Female", cluster == i)
-            mean_hgb <- mean(female_cluster_data$HGB, na.rm = TRUE)
-            mean_age <- mean(female_cluster_data$Age, na.rm = TRUE)
-            sd_hgb <- sd(female_cluster_data$HGB, na.rm = TRUE)
-            sd_age <- sd(female_cluster_data$Age, na.rm = TRUE)
-            
-            cat(paste0("  Mean HGB: ", round(mean_hgb, 3), "\n"))
-            cat(paste0("  Mean Age: ", round(mean_age, 3), "\n"))
-            cat(paste0("  Std Dev HGB: ", round(sd_hgb, 3), "\n"))
-            cat(paste0("  Std Dev Age: ", round(sd_age, 3), "\n"))
-            
-            if (!is.na(sd_age)) {
-              lower_age <- round(mean_age - 2 * sd_age, 1)
-              upper_age <- round(mean_age + 2 * sd_age, 1)
-              cat(paste0("  Estimated Age Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
-            } else {
-              cat("  Estimated Age Range: N/A (Std Dev Age problematic)\n")
+            num_clusters <- models$male$G
+            for (i in 1:num_clusters) {
+                cat(paste0("Cluster ", i, ":\n"))
+                cat(paste0("  Proportion: ", round(models$male$parameters$pro[i], 3), "\n"))
+                
+                male_cluster_data <- plot_data %>% filter(Gender == "Male", cluster == i)
+                mean_hgb <- mean(male_cluster_data$HGB, na.rm = TRUE)
+                mean_age <- mean(male_cluster_data$Age, na.rm = TRUE)
+                sd_hgb <- sd(male_cluster_data$HGB, na.rm = TRUE)
+                sd_age <- sd(male_cluster_data$Age, na.rm = TRUE)
+                
+                cat(paste0("  Mean HGB: ", round(mean_hgb, 3), "\n"))
+                cat(paste0("  Mean Age: ", round(mean_age, 3), "\n"))
+                cat(paste0("  Std Dev HGB: ", round(sd_hgb, 3), "\n"))
+                cat(paste0("  Std Dev Age: ", round(sd_age, 3), "\n"))
+                
+                if (!is.na(sd_age)) {
+                  lower_age <- round(mean_age - 2 * sd_age, 1)
+                  upper_age <- round(mean_age + 2 * sd_age, 1)
+                  cat(paste0("  Estimated Age Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
+                } else {
+                  cat("  Estimated Age Range: N/A (Std Dev Age problematic)\n")
+                }
+                cat("\n")
             }
-            cat("\n")
+        } else {
+            cat("No male subpopulations detected.\n")
         }
-    } else {
-        cat("No female subpopulations detected.\n")
+        
+        if (!is.null(models$female) && !inherits(models$female, "try-error")) {
+            cat("\n--- Female Subpopulations ---\n")
+            
+            print(summary(models$female))
+
+            num_clusters <- models$female$G
+            for (i in 1:num_clusters) {
+                cat(paste0("Cluster ", i, ":\n"))
+                cat(paste0("  Proportion: ", round(models$female$parameters$pro[i], 3), "\n"))
+                
+                female_cluster_data <- plot_data %>% filter(Gender == "Female", cluster == i)
+                mean_hgb <- mean(female_cluster_data$HGB, na.rm = TRUE)
+                mean_age <- mean(female_cluster_data$Age, na.rm = TRUE)
+                sd_hgb <- sd(female_cluster_data$HGB, na.rm = TRUE)
+                sd_age <- sd(female_cluster_data$Age, na.rm = TRUE)
+                
+                cat(paste0("  Mean HGB: ", round(mean_hgb, 3), "\n"))
+                cat(paste0("  Mean Age: ", round(mean_age, 3), "\n"))
+                cat(paste0("  Std Dev HGB: ", round(sd_hgb, 3), "\n"))
+                cat(paste0("  Std Dev Age: ", round(sd_age, 3), "\n"))
+                
+                if (!is.na(sd_age)) {
+                  lower_age <- round(mean_age - 2 * sd_age, 1)
+                  upper_age <- round(mean_age + 2 * sd_age, 1)
+                  cat(paste0("  Estimated Age Range (Mean +/- 2SD): [", max(0, lower_age), " to ", upper_age, "] years\n"))
+                } else {
+                  cat("  Estimated Age Range: N/A (Std Dev Age problematic)\n")
+                }
+                cat("\n")
+            }
+        } else {
+            cat("No female subpopulations detected.\n")
+        }
     }
 
     if (gmm_transformation_details_rv()$male_hgb_transformed || gmm_transformation_details_rv()$female_hgb_transformed) {

@@ -93,7 +93,7 @@ Before running the GMM, the data is preprocessed: the selected value's column is
         hr(),
         # Action buttons for the GMM analysis
         # New radio buttons for gender selection
-        radioButtons(inputId = "gmm_gender_choice", label = "Select Gender Analysis:", choices = c("Male" = "Male", "Female" = "Female", "Both" = "Both"), selected = "Both", inline = TRUE),
+        uiOutput("gmm_gender_choice_ui"),
         actionButton("run_gmm_analysis_btn", "Analyze", class = "btn-primary"),
         actionButton("reset_gmm_analysis_btn", "Reset File", class = "btn-secondary"),
         # Added a div with a top margin to create spacing
