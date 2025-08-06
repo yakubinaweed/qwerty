@@ -95,9 +95,8 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
     refiner_model_rv(NULL) # Reset the model
     plot_title_rv("") # Reset the title
     message_rv(list(type = "", text = ""))
-    output$result_text <- renderPrint({ cat("") })
-    output$result_plot <- renderPlot(plot.new())
-
+    
+    # Explicitly reset the select inputs to prevent lingering values
     updateSelectInput(session, "col_value", choices = c("None" = ""), selected = "")
     updateSelectInput(session, "col_age", choices = c("None" = ""), selected = "")
     updateSelectInput(session, "col_gender", choices = c("None" = ""), selected = "")
@@ -189,11 +188,6 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
       plot_title_rv(paste0("Estimated Reference Intervals for ", isolated_inputs$col_value, 
                            " (Gender: ", isolated_inputs$gender_choice, 
                            ", Age: ", isolated_inputs$age_range[1], "-", isolated_inputs$age_range[2], ")"))
-      
-      # Render the text summary of the model
-      output$result_text <- renderPrint({
-        print(refiner_model)
-      })
 
       # If auto-save is enabled, save the plot to the selected directory
       if (isolated_inputs$enable_directory && !is.null(selected_dir_reactive())) {
@@ -232,8 +226,7 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
     }, error = function(e) {
       error_message <- paste("Analysis Error:", e$message)
       message_rv(list(text = error_message, type = "danger"))
-      output$result_text <- renderPrint({ cat(error_message) })
-      output$result_plot <- renderPlot(plot.new())
+      refiner_model_rv(NULL) # Set to NULL to clear plot and summary
       print(error_message)
     }, finally = {
       # Re-enable button and restore text when analysis finishes
@@ -243,6 +236,13 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
       shinyjs::runjs("$('#analyze_btn').text('Analyze');")
     })
   })
+
+  # Renders the text summary reactively
+  output$result_text <- renderPrint({
+    req(refiner_model_rv())
+    print(refiner_model_rv())
+  })
+
 
   # Renders the live-updating plot output that depends on reactive inputs
   output$result_plot <- renderPlot({
