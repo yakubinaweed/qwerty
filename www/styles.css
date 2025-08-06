@@ -114,3 +114,8 @@
     font-family: Arial, sans-serif !important;
     color: #000000;
 }
+
+/* Custom spacing div */
+.spacing-div {
+  margin-top: 2rem; /* Adjust this value to increase or decrease the spacing */
+}

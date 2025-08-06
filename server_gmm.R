@@ -481,7 +481,9 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       div(class = "output-box",
           h4(class = "gmm-title", "BIC Criterion Results"),
           plotOutput("gmm_bic_plots", height = "400px"),
+          div(class = "spacing-div"),
           plotOutput("plot_output_gmm_bic", height = "600px"),
+          div(class = "spacing-div"),
           verbatimTextOutput("gmm_summary_output_bic")
       )
     )
