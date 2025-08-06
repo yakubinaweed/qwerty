@@ -10,26 +10,33 @@
 # It takes a data frame, gender choice, age range, and column names for gender and age.
 # It returns a filtered data frame with a standardized 'Gender_Standardized' column.
 filter_data <- function(data, gender_choice, age_min, age_max, col_gender, col_age) {
-  if (!col_gender %in% names(data) || !col_age %in% names(data)) {
-    stop("Gender or age column not found in data.")
+  if (col_age == "") {
+    stop("Age column not found in data.")
   }
 
   filtered_data <- data %>%
     filter(!!sym(col_age) >= age_min & !!sym(col_age) <= age_max)
-  
-  filtered_data <- filtered_data %>%
-    mutate(Gender_Standardized = case_when(
-      grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", !!sym(col_gender), ignore.case = TRUE) ~ "Male",
-      grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", !!sym(col_gender), ignore.case = TRUE) ~ "Female",
-      TRUE ~ "Other"
-    ))
-  
-  if (gender_choice != "Both") {
+
+  # Check if a gender column is selected
+  if (col_gender != "" && col_gender %in% names(data)) {
     filtered_data <- filtered_data %>%
-      filter(Gender_Standardized == case_when(
-        gender_choice == "M" ~ "Male",
-        gender_choice == "F" ~ "Female"
+      mutate(Gender_Standardized = case_when(
+        grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", !!sym(col_gender), ignore.case = TRUE) ~ "Male",
+        grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", !!sym(col_gender), ignore.case = TRUE) ~ "Female",
+        TRUE ~ "Other"
       ))
+    
+    if (gender_choice != "Both") {
+      filtered_data <- filtered_data %>%
+        filter(Gender_Standardized == case_when(
+          gender_choice == "M" ~ "Male",
+          gender_choice == "F" ~ "Female"
+        ))
+    }
+  } else {
+    # If no gender column is selected, create a dummy 'Combined' gender column
+    filtered_data <- filtered_data %>%
+      mutate(Gender_Standardized = "Combined")
   }
 
   return(filtered_data)
@@ -125,11 +132,17 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
   # Reactive expression for filtered data
   # This filters the raw data based on user selections (gender and age range)
   filtered_data_reactive <- reactive({
-    req(data_reactive(), input$col_value, input$col_age, input$col_gender)
-    if (input$col_value == "" || input$col_age == "" || input$col_gender == "") {
+    req(data_reactive(), input$col_value, input$col_age)
+    if (input$col_value == "" || input$col_age == "") {
       return(NULL)
     }
-    filter_data(data_reactive(), input$gender_choice, input$age_range[1], input$age_range[2], input$col_gender, input$col_age)
+    
+    # Use the filter_data function with a conditional check for the gender column
+    if (input$col_gender == "") {
+      filter_data(data_reactive(), input$gender_choice, input$age_range[1], input$age_range[2], input$col_gender, input$col_age)
+    } else {
+      filter_data(data_reactive(), input$gender_choice, input$age_range[1], input$age_range[2], input$col_gender, input$col_age)
+    }
   })
 
   # Observer for the Analyze button
@@ -185,8 +198,11 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
       }
       
       refiner_model_rv(refiner_model)
+      
+      gender_text <- if (isolated_inputs$col_gender == "") "Combined" else paste0("Gender: ", isolated_inputs$gender_choice)
+      
       plot_title_rv(paste0("Estimated Reference Intervals for ", isolated_inputs$col_value, 
-                           " (Gender: ", isolated_inputs$gender_choice, 
+                           " (", gender_text, 
                            ", Age: ", isolated_inputs$age_range[1], "-", isolated_inputs$age_range[2], ")"))
 
       # If auto-save is enabled, save the plot to the selected directory
