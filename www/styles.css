@@ -103,3 +103,20 @@
     padding-top: 0.5rem !important;
     padding-bottom: 0.5rem !important;
 }
+
+/* Custom styling for the GMM results title to match ggplot titles */
+.output-box h4.gmm-title {
+    font-size: 20px !important;
+    font-weight: bold !important;
+    text-align: center !important;
+    margin: 0 !important; /* Reset all margins */
+    padding: 0 !important; /* Reset all padding */
+    font-family: Arial, sans-serif !important; /* Set font to Arial */
+    color: #222;
+}
+
+/* Ensure plots have a consistent top margin to control the gap */
+#gmm_model_selection_plot_bic,
+#plot_output_gmm_bic {
+    margin-top: 15px !important; /* Set a specific top margin for both plots */
+}

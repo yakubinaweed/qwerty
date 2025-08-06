@@ -58,9 +58,9 @@ run_gmm_with_criterion <- function(data_mat, G_range = 2:5, criterion = "BIC") {
   if (any(is.na(data_mat))) {
     stop("Input data_mat contains NA values. Please remove or impute before clustering.")
   }
-  
+
   multivariate_model_names <- c("EII", "VII", "EEI", "VEI", "EVI", "VVI", "EEE", "EVE", "VEE", "VVV")
-  
+
   tryCatch({
     if (criterion == "BIC") {
       gmm_model <- Mclust(data_mat, G = G_range, modelNames = multivariate_model_names)
@@ -71,9 +71,9 @@ run_gmm_with_criterion <- function(data_mat, G_range = 2:5, criterion = "BIC") {
         stop("Mclust could not be fitted to the data.")
       }
       icl_values <- mclustICL(mclust_all)
-      
+
       best_model_index <- which.max(icl_values)
-      
+
       best_G <- icl_values[best_model_index, "G"]
       best_model_name <- rownames(icl_values)[best_model_index]
 
@@ -181,11 +181,11 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       col_names <- colnames(data)
       # Add "None" as a choice for the gender column
       all_col_choices_with_none <- c("None" = "", col_names)
-      
+
       updateSelectInput(session, "gmm_hgb_col", choices = all_col_choices_with_none, selected = guess_column(col_names, c("HGB", "hgb", "HB", "hb")))
       updateSelectInput(session, "gmm_age_col", choices = all_col_choices_with_none, selected = guess_column(col_names, c("Age", "age", "leeftijd")))
       updateSelectInput(session, "gmm_gender_col", choices = all_col_choices_with_none, selected = guess_column(col_names, c("Gender", "gender", "Sex", "sex", "geslacht")))
-      
+
     }, error = function(e) {
       message_rv(list(text = paste("Error reading GMM file:", e$message), type = "error"))
       gmm_uploaded_data_rv(NULL)
@@ -474,25 +474,20 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
     plot_data_bic <- gmm_processed_data_rv()$bic
 
     if (is.null(plot_data_bic) || nrow(plot_data_bic) == 0) {
-      return(tagList(
-        div(class = "output-box",
-            h4("BIC Criterion Results"),
-            p("No GMM results available. Please upload a file and run the analysis.")
-        )
-      ))
+      return(NULL)
     }
 
     tagList(
       div(class = "output-box",
-          h4("BIC Criterion Results"),
-          plotOutput("gmm_model_selection_plot_bic", height = "400px"),
+          h4(class = "gmm-title", "BIC Criterion Results"),
+          plotOutput("gmm_bic_plots", height = "400px"),
           plotOutput("plot_output_gmm_bic", height = "600px"),
           verbatimTextOutput("gmm_summary_output_bic")
       )
     )
   })
 
-  output$gmm_model_selection_plot_bic <- renderPlot({
+  output$gmm_bic_plots <- renderPlot({
     models <- gmm_models_bic_rv()
     
     # Handle the "Combined" case for models
