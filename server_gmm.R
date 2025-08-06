@@ -489,35 +489,42 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
 
   output$gmm_bic_plots <- renderPlot({
     models <- gmm_models_bic_rv()
+
+    # Set new graphical parameters to reduce top margin and adjust title position
+    old_par <- par(no.readonly = TRUE)
+    on.exit(par(old_par))
+    par(mar = c(5.1, 4.1, 1.1, 2.1), mgp = c(2.5, 1, 0))
     
-    # Handle the "Combined" case for models
     has_combined_model <- !is.null(models$combined)
     has_male_model <- !is.null(models$male)
     has_female_model <- !is.null(models$female)
 
     if (has_combined_model) {
       if (!is.null(models$combined) && !inherits(models$combined, "try-error")) {
-        plot(models$combined, what = "BIC", main = "Combined - BIC Plot")
+        plot_title <- paste0("BIC Plot for ", input$gmm_hgb_col, " and ", input$gmm_age_col, " (Combined)")
+        plot(models$combined, what = "BIC", main = plot_title)
       } else {
         return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "GMM model for combined data was not generated.", size = 6, color = "grey50"))
       }
     } else if (has_male_model || has_female_model) {
       par(mfrow = c(1, 2))
       if (has_male_model && !inherits(models$male, "try-error")) {
-        plot(models$male, what = "BIC", main = "Male - BIC Plot")
+        plot_title <- paste0("BIC Plot for ", input$gmm_hgb_col, " and ", input$gmm_age_col, " (Male)")
+        plot(models$male, what = "BIC", main = plot_title)
       } else {
         plot.new()
         text(0.5, 0.5, "GMM model for male data was not generated.")
       }
       if (has_female_model && !inherits(models$female, "try-error")) {
-        plot(models$female, what = "BIC", main = "Female - BIC Plot")
+        plot_title <- paste0("BIC Plot for ", input$gmm_hgb_col, " and ", input$gmm_age_col, " (Female)")
+        plot(models$female, what = "BIC", main = plot_title)
       } else {
         plot.new()
         text(0.5, 0.5, "GMM model for female data was not generated.")
       }
       par(mfrow = c(1, 1))
     } else {
-       return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM models available for plotting.", size = 6, color = "grey50"))
+      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM models available for plotting.", size = 6, color = "grey50"))
     }
   })
 
