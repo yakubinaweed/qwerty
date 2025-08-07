@@ -28,7 +28,7 @@ apply_conditional_yeo_johnson <- function(data_vector, skewness_threshold = 0.5)
 
   if (abs(skew) > skewness_threshold) {
     tryCatch({
-      pt_result <- powerTransform(data_vector)
+      pt_result <- car::powerTransform(data_vector)
       lambda <- pt_result$lambda
       transformed_data <- car::yjPower(data_vector, lambda)
       transformation_applied <- TRUE
@@ -59,7 +59,7 @@ run_gmm_with_criterion <- function(data_mat, G_range = 2:5) {
   }
 
   tryCatch({
-    gmm_model <- Mclust(data_mat, G = G_range, modelNames = c("EII", "VII", "EEI", "VEI", "EVI", "VVI", "EEE", "EVE", "VEE", "VVV"))
+    gmm_model <- mclust::Mclust(data_mat, G = G_range, modelNames = c("EII", "VII", "EEI", "VEI", "EVI", "VVI", "EEE", "EVE", "VEE", "VVV"))
     return(gmm_model)
   }, error = function(e) {
     warning(paste("GMM run failed:", e$message))
@@ -89,51 +89,84 @@ assign_clusters <- function(df, gmm_model) {
 # @return: A ggplot object.
 plot_value_age <- function(df, value_col_name, age_col_name) {
   if (is.null(df) || nrow(df) == 0) {
-    return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM data available for plotting.", size = 6, color = "grey50"))
+    return(ggplot2::ggplot() + ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No GMM data available for plotting.", size = 6, color = "grey50"))
   }
 
   plot_title <- paste(value_col_name, "vs", age_col_name, "by Subpopulation Cluster")
   
   # Calculate cluster means
   cluster_means <- df %>%
-    group_by(Gender, cluster) %>%
-    summarise(mean_Age = mean(Age, na.rm = TRUE),
-              mean_Value = mean(Value, na.rm = TRUE),
-              .groups = 'drop')
+    dplyr::group_by(Gender, cluster) %>%
+    dplyr::summarise(mean_Age = mean(Age, na.rm = TRUE),
+                     mean_Value = mean(Value, na.rm = TRUE),
+                     .groups = 'drop')
 
-  ggplot(df, aes(x = Age, y = Value, color = factor(cluster))) +
+  ggplot2::ggplot(df, ggplot2::aes(x = Age, y = Value, color = factor(cluster))) +
     # Original design for points
-    geom_point(position = position_jitter(width = 0.2, height = 0.2), alpha = 0.6) +
+    ggplot2::geom_point(position = ggplot2::position_jitter(width = 0.2, height = 0.2), alpha = 0.6) +
     # Original design for ellipses
-    stat_ellipse(geom = "polygon", aes(fill = factor(cluster)), alpha = 0.2, show.legend = FALSE, level = 0.95) +
+    ggplot2::stat_ellipse(geom = "polygon", ggplot2::aes(fill = factor(cluster)), alpha = 0.2, show.legend = FALSE, level = 0.95) +
     # Original design for cluster means
-    geom_point(data = cluster_means, aes(x = mean_Age, y = mean_Value), shape = 4, size = 5, color = "red", stroke = 2) +
-    facet_wrap(~Gender, labeller = as_labeller(function(x) paste(x, "Population"))) +
-    labs(title = plot_title,
-         x = age_col_name, y = value_col_name, color = "Cluster") +
+    ggplot2::geom_point(data = cluster_means, ggplot2::aes(x = mean_Age, y = mean_Value), shape = 4, size = 5, color = "red", stroke = 2) +
+    ggplot2::facet_wrap(~Gender, labeller = as_labeller(function(x) paste(x, "Population"))) +
+    ggplot2::labs(title = plot_title,
+                  x = age_col_name, y = value_col_name, color = "Cluster") +
     # Original color palette
-    scale_color_brewer(palette = "Set1") +
-    scale_fill_brewer(palette = "Set1") +
+    ggplot2::scale_color_brewer(palette = "Set1") +
+    ggplot2::scale_fill_brewer(palette = "Set1") +
     # Theme adjustments based on your feedback
-    theme_light() +
-    theme(
-      plot.title = element_text(size = 20, face = "bold", hjust = 0.5, margin = margin(b = 20)),
-      strip.text = element_text(size = 14, face = "bold", color = "black"),
+    ggplot2::theme_light() +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 20, face = "bold", hjust = 0.5, margin = ggplot2::margin(b = 20)),
+      strip.text = ggplot2::element_text(size = 14, face = "bold", color = "black"),
       # Light grey box for facet labels with no contour line
-      strip.background = element_rect(fill = "#EEEEEE", color = NA),
-      axis.title.x = element_text(size = 14, margin = margin(t = 10)),
-      axis.title.y = element_text(size = 14, margin = margin(r = 10)),
-      axis.text = element_text(size = 11, color = "black"),
-      legend.title = element_text(size = 12, face = "bold"),
-      legend.text = element_text(size = 10, color = "black"),
+      strip.background = ggplot2::element_rect(fill = "#EEEEEE", color = NA),
+      axis.title.x = ggplot2::element_text(size = 14, margin = ggplot2::margin(t = 10)),
+      axis.title.y = ggplot2::element_text(size = 14, margin = ggplot2::margin(r = 10)),
+      axis.text = ggplot2::element_text(size = 11, color = "black"),
+      legend.title = ggplot2::element_text(size = 12, face = "bold"),
+      legend.text = ggplot2::element_text(size = 10, color = "black"),
       legend.position = "bottom",
-      legend.background = element_rect(fill = "white", color = "grey90", size = 0.5, linetype = "solid"),
+      legend.background = ggplot2::element_rect(fill = "white", color = "grey90", size = 0.5, linetype = "solid"),
       # Boxed plot with lighter lines
-      panel.border = element_rect(colour = "#CCCCCC", fill = NA, size = 1),
-      panel.grid.major = element_line(color = "#F0F0F0", size = 0.5),
-      panel.grid.minor = element_blank()
+      panel.border = ggplot2::element_rect(colour = "#CCCCCC", fill = NA, size = 1),
+      panel.grid.major = ggplot2::element_line(color = "#F0F0F0", size = 0.5),
+      panel.grid.minor = ggplot2::element_blank()
     )
 }
+
+# A new, centralized function to run the GMM on a data subset
+run_gmm_analysis_on_subset <- function(data_subset, gender_label, value_col_name, age_col_name, message_rv, progress_increment) {
+    if (nrow(data_subset) > 0) {
+        yj_result <- apply_conditional_yeo_johnson(data_subset$Value)
+        data_subset$Value_transformed <- yj_result$transformed_data
+        
+        data_subset$Value_z <- z_transform(data_subset$Value_transformed)
+        data_subset$Age_z <- z_transform(data_subset$Age)
+        
+        incProgress(progress_increment, detail = paste("Running GMM for", gender_label, "data (BIC)..."))
+        
+        gmm_model <- tryCatch({
+            run_gmm_with_criterion(data_subset %>% dplyr::select(Value = Value_z, Age = Age_z))
+        }, error = function(e) {
+            message_rv(list(text = paste("Error running BIC GMM for", gender_label, "data:", e$message), type = "error"))
+            NULL
+        })
+
+        if (is.null(gmm_model)) {
+            stop(paste("GMM model for", gender_label, "data could not be generated."))
+        }
+        
+        data_clustered <- assign_clusters(data_subset, gmm_model)
+        data_clustered$cluster <- as.factor(data_clustered$cluster)
+
+        return(list(model = gmm_model, clustered_data = data_clustered, transformed_flag = yj_result$transformation_applied))
+    } else {
+        message_rv(list(text = paste("Error: No", tolower(gender_label), "data found after filtering. Please check the gender column and selection."), type = "error"))
+        return(list(model = NULL, clustered_data = NULL, transformed_flag = FALSE))
+    }
+}
+
 
 # =========================================================================
 # MAIN SERVER LOGIC
@@ -285,23 +318,8 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
 
       incProgress(0.2, detail = "Splitting data by gender and transforming...")
 
+      # Standardize gender column if present
       if (gender_col != "") {
-        # Check if any gender categories are present before processing
-        gender_matches <- gmm_data %>%
-          mutate(Gender = case_when(
-            grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
-            grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", Gender_orig, ignore.case = TRUE) ~ "Female",
-            TRUE ~ "Other"
-          )) %>%
-          filter(Gender %in% c("Male", "Female"))
-
-        if (nrow(gender_matches) == 0) {
-          message_rv(list(text = "Error: The selected gender column does not contain any recognizable 'Male' or 'Female' categories. Please check your data.", type = "error"))
-          analysis_running_rv(FALSE)
-          shinyjs::enable("tabs")
-          return(NULL)
-        }
-
         gmm_data <- gmm_data %>%
           mutate(Gender = case_when(
             grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
@@ -310,12 +328,12 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
           )) %>%
           filter(Gender %in% c("Male", "Female"))
       } else {
-        # If no gender column is provided, assign a single "Combined" group
+        # If no gender column, create a dummy group
         gmm_data <- gmm_data %>%
           mutate(Gender = "Combined")
       }
       
-      # Additional check: If filtering by gender results in an empty dataset
+      # Final check for empty data after filtering
       if (nrow(gmm_data) == 0) {
         message_rv(list(text = "Filtered dataset is empty after gender selection. Please check the data or gender column.", type = "warning"))
         analysis_running_rv(FALSE)
@@ -323,163 +341,108 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
         return(NULL)
       }
 
-
       combined_clustered_data <- tibble()
       male_value_transformed_flag <- FALSE
       female_value_transformed_flag <- FALSE
       combined_gmm_model_bic <- NULL
       male_gmm_model_bic <- NULL
       female_gmm_model_bic <- NULL
+      
+      # Use a list to store results for easier processing
+      results <- list(male = NULL, female = NULL, combined = NULL)
 
       # Process data based on gender selection
       if (gender_col == "" || gender_choice == "Both") {
-        # This block now handles both no-gender and "both" gender cases
         if (gender_col == "") {
           message("Running GMM on combined data...")
-          data_to_process <- gmm_data
-          yj_result <- apply_conditional_yeo_johnson(data_to_process$Value)
-          data_to_process$Value_transformed <- yj_result$transformed_data
-          male_value_transformed_flag <- yj_result$transformation_applied # Use male flag for combined
-          data_to_process$Value_z <- z_transform(data_to_process$Value_transformed)
-          data_to_process$Age_z <- z_transform(data_to_process$Age)
-
-          incProgress(0.2, detail = "Running GMM for Combined data (BIC)...")
-          tryCatch({
-            combined_gmm_model_bic <- run_gmm_with_criterion(data_to_process %>% dplyr::select(Value = Value_z, Age = Age_z))
-            if (is.null(combined_gmm_model_bic)) {
-              stop("GMM model for combined data could not be generated.")
-            }
-            data_clustered <- assign_clusters(data_to_process, combined_gmm_model_bic)
-            data_clustered$cluster <- as.factor(data_clustered$cluster)
-            combined_clustered_data <- bind_rows(combined_clustered_data, data_clustered %>% dplyr::select(Value, Age, Gender, cluster))
-          }, error = function(e) {
-            message_rv(list(text = paste("Error running BIC GMM for combined data:", e$message), type = "error"))
-          })
+          results$combined <- run_gmm_analysis_on_subset(
+            data_subset = gmm_data,
+            gender_label = "Combined",
+            value_col_name = value_col,
+            age_col_name = age_col,
+            message_rv = message_rv,
+            progress_increment = 0.6
+          )
+          if (!is.null(results$combined$model)) {
+            combined_gmm_model_bic <- results$combined$model
+            male_value_transformed_flag <- results$combined$transformed_flag
+            combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$combined$clustered_data)
+          }
         } else {
-            # Existing logic for processing both genders separately
-            # Process Male data if selected
-            male_data <- gmm_data %>% filter(Gender == "Male")
-            if (nrow(male_data) > 0) {
-              yj_result_male <- apply_conditional_yeo_johnson(male_data$Value)
-              male_data$Value_transformed <- yj_result_male$transformed_data
-              male_value_transformed_flag <- yj_result_male$transformation_applied
-              male_data$Value_z <- z_transform(male_data$Value_transformed)
-              male_data$Age_z <- z_transform(male_data$Age)
-              
-              incProgress(0.2, detail = "Running GMM for Male data (BIC)...")
-              tryCatch({
-                male_gmm_model_bic <- run_gmm_with_criterion(male_data %>% dplyr::select(Value = Value_z, Age = Age_z))
-                if (is.null(male_gmm_model_bic)) {
-                  stop("GMM model for male data could not be generated.")
-                }
-                male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
-                male_data_bic$cluster <- as.factor(male_data_bic$cluster)
-                combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(Value, Age, Gender, cluster))
-              }, error = function(e) {
-                message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
-              })
-            } else {
-              message_rv(list(text = "Error: No male data found after filtering. Please check the gender column and selection.", type = "error"))
-              analysis_running_rv(FALSE)
-              shinyjs::enable("tabs")
-              return(NULL)
-            }
-            # Process Female data if selected
-            female_data <- gmm_data %>% filter(Gender == "Female")
-            if (nrow(female_data) > 0) {
-              yj_result_female <- apply_conditional_yeo_johnson(female_data$Value)
-              female_data$Value_transformed <- yj_result_female$transformed_data
-              female_value_transformed_flag <- yj_result_female$transformation_applied
-              female_data$Value_z <- z_transform(female_data$Value_transformed)
-              female_data$Age_z <- z_transform(female_data$Age)
-              
-              incProgress(0.2, detail = "Running GMM for Female data (BIC)...")
-              tryCatch({
-                female_gmm_model_bic <- run_gmm_with_criterion(female_data %>% dplyr::select(Value = Value_z, Age = Age_z))
-                if (is.null(female_gmm_model_bic)) {
-                  stop("GMM model for female data could not be generated.")
-                }
-                female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
-                female_data_bic$cluster <- as.factor(female_data_bic$cluster)
-                combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(Value, Age, Gender, cluster))
-              }, error = function(e) {
-                message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
-              })
-            } else {
-              message_rv(list(text = "Error: No female data found after filtering. Please check the data or gender column.", type = "error"))
-              analysis_running_rv(FALSE)
-              shinyjs::enable("tabs")
-              return(NULL)
-            }
+          # Process Male data
+          male_data <- gmm_data %>% dplyr::filter(Gender == "Male")
+          results$male <- run_gmm_analysis_on_subset(
+            data_subset = male_data,
+            gender_label = "Male",
+            value_col_name = value_col,
+            age_col_name = age_col,
+            message_rv = message_rv,
+            progress_increment = 0.3
+          )
+          if (!is.null(results$male$model)) {
+            male_gmm_model_bic <- results$male$model
+            male_value_transformed_flag <- results$male$transformed_flag
+            combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$male$clustered_data)
+          }
+
+          # Process Female data
+          female_data <- gmm_data %>% dplyr::filter(Gender == "Female")
+          results$female <- run_gmm_analysis_on_subset(
+            data_subset = female_data,
+            gender_label = "Female",
+            value_col_name = value_col,
+            age_col_name = age_col,
+            message_rv = message_rv,
+            progress_increment = 0.3
+          )
+          if (!is.null(results$female$model)) {
+            female_gmm_model_bic <- results$female$model
+            female_value_transformed_flag <- results$female$transformed_flag
+            combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$female$clustered_data)
+          }
         }
-
       } else if (gender_choice == "Male") {
-          # Process Male data if selected
-          male_data <- gmm_data %>% filter(Gender == "Male")
-          if (nrow(male_data) > 0) {
-            yj_result_male <- apply_conditional_yeo_johnson(male_data$Value)
-            male_data$Value_transformed <- yj_result_male$transformed_data
-            male_value_transformed_flag <- yj_result_male$transformation_applied
-            male_data$Value_z <- z_transform(male_data$Value_transformed)
-            male_data$Age_z <- z_transform(male_data$Age)
-            
-            incProgress(0.2, detail = "Running GMM for Male data (BIC)...")
-            tryCatch({
-              male_gmm_model_bic <- run_gmm_with_criterion(male_data %>% dplyr::select(Value = Value_z, Age = Age_z))
-              if (is.null(male_gmm_model_bic)) {
-                stop("GMM model for male data could not be generated.")
-              }
-              male_data_bic <- assign_clusters(male_data, male_gmm_model_bic)
-              male_data_bic$cluster <- as.factor(male_data_bic$cluster)
-              combined_clustered_data <- bind_rows(combined_clustered_data, male_data_bic %>% dplyr::select(Value, Age, Gender, cluster))
-            }, error = function(e) {
-              message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
-            })
-          } else {
-              message_rv(list(text = "Error: No male data found after filtering. Please check the gender column and selection.", type = "error"))
-              analysis_running_rv(FALSE)
-              shinyjs::enable("tabs")
-              return(NULL)
-          }
-
+        male_data <- gmm_data %>% dplyr::filter(Gender == "Male")
+        results$male <- run_gmm_analysis_on_subset(
+          data_subset = male_data,
+          gender_label = "Male",
+          value_col_name = value_col,
+          age_col_name = age_col,
+          message_rv = message_rv,
+          progress_increment = 0.6
+        )
+        if (!is.null(results$male$model)) {
+          male_gmm_model_bic <- results$male$model
+          male_value_transformed_flag <- results$male$transformed_flag
+          combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$male$clustered_data)
+        }
       } else if (gender_choice == "Female") {
-          # Process Female data if selected
-          female_data <- gmm_data %>% filter(Gender == "Female")
-          if (nrow(female_data) > 0) {
-            yj_result_female <- apply_conditional_yeo_johnson(female_data$Value)
-            female_data$Value_transformed <- yj_result_female$transformed_data
-            female_value_transformed_flag <- yj_result_female$transformation_applied
-            female_data$Value_z <- z_transform(female_data$Value_transformed)
-            female_data$Age_z <- z_transform(female_data$Age)
-            
-            incProgress(0.2, detail = "Running GMM for Female data (BIC)...")
-            tryCatch({
-              female_gmm_model_bic <- run_gmm_with_criterion(female_data %>% dplyr::select(Value = Value_z, Age = Age_z))
-              if (is.null(female_gmm_model_bic)) {
-                stop("GMM model for female data could not be generated.")
-              }
-              female_data_bic <- assign_clusters(female_data, female_gmm_model_bic)
-              female_data_bic$cluster <- as.factor(female_data_bic$cluster)
-              combined_clustered_data <- bind_rows(combined_clustered_data, female_data_bic %>% dplyr::select(Value, Age, Gender, cluster))
-            }, error = function(e) {
-              message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
-            })
-          } else {
-              message_rv(list(text = "Error: No female data found after filtering. Please check the data or gender column.", type = "error"))
-              analysis_running_rv(FALSE)
-              shinyjs::enable("tabs")
-              return(NULL)
-          }
+        female_data <- gmm_data %>% dplyr::filter(Gender == "Female")
+        results$female <- run_gmm_analysis_on_subset(
+          data_subset = female_data,
+          gender_label = "Female",
+          value_col_name = value_col,
+          age_col_name = age_col,
+          message_rv = message_rv,
+          progress_increment = 0.6
+        )
+        if (!is.null(results$female$model)) {
+          female_gmm_model_bic <- results$female$model
+          female_value_transformed_flag <- results$female$transformed_flag
+          combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$female$clustered_data)
+        }
       }
       
-      # Update reactive values with the correct models based on whether gender was selected
-      if (gender_col == "") {
-        gmm_models_bic_rv(list(combined = combined_gmm_model_bic))
-      } else {
-        gmm_models_bic_rv(list(male = male_gmm_model_bic, female = female_gmm_model_bic))
-      }
-      
-      gmm_transformation_details_rv(list(male_value_transformed = male_value_transformed_flag, female_value_transformed = female_value_transformed_flag))
+      # Update reactive values with the correct models and transformation details
+      gmm_models_bic_rv(list(
+        combined = combined_gmm_model_bic,
+        male = male_gmm_model_bic,
+        female = female_gmm_model_bic
+      ))
+      gmm_transformation_details_rv(list(
+        male_value_transformed = male_value_transformed_flag, 
+        female_value_transformed = female_value_transformed_flag
+      ))
 
       if (nrow(combined_clustered_data) > 0) {
         gmm_processed_data_rv(list(bic = combined_clustered_data))
@@ -547,7 +510,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
         plot_title <- paste0("BIC Plot for ", input$gmm_value_col, " and ", input$gmm_age_col, " (Combined)")
         plot(models$combined, what = "BIC", main = plot_title)
       } else {
-        return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "GMM model for combined data was not generated.", size = 6, color = "grey50"))
+        return(ggplot2::ggplot() + ggplot2::annotate("text", x = 0.5, y = 0.5, label = "GMM model for combined data was not generated.", size = 6, color = "grey50"))
       }
     } else if (has_male_model || has_female_model) {
       par(mfrow = c(1, 2))
@@ -567,14 +530,14 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       }
       par(mfrow = c(1, 1))
     } else {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM models available for plotting.", size = 6, color = "grey50"))
+      return(ggplot2::ggplot() + ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No GMM models available for plotting.", size = 6, color = "grey50"))
     }
   })
 
   output$plot_output_gmm_bic <- renderPlot({
     plot_data <- gmm_processed_data_rv()$bic
     if (is.null(plot_data) || nrow(plot_data) == 0) {
-      return(ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No GMM data available for plotting.", size = 6, color = "grey50"))
+      return(ggplot2::ggplot() + ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No GMM data available for plotting.", size = 6, color = "grey50"))
     }
     plot_value_age(plot_data,
                 value_col_name = input$gmm_value_col,
@@ -601,7 +564,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             cat(paste0("Cluster ", i, ":\n"))
             cat(paste0("  Proportion: ", round(models$combined$parameters$pro[i], 3), "\n"))
             
-            cluster_data <- plot_data %>% filter(Gender == "Combined", cluster == i)
+            cluster_data <- plot_data %>% dplyr::filter(Gender == "Combined", cluster == i)
             mean_value <- mean(cluster_data$Value, na.rm = TRUE)
             mean_age <- mean(cluster_data$Age, na.rm = TRUE)
             sd_value <- sd(cluster_data$Value, na.rm = TRUE)
@@ -632,7 +595,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
                 cat(paste0("Cluster ", i, ":\n"))
                 cat(paste0("  Proportion: ", round(models$male$parameters$pro[i], 3), "\n"))
                 
-                male_cluster_data <- plot_data %>% filter(Gender == "Male", cluster == i)
+                male_cluster_data <- plot_data %>% dplyr::filter(Gender == "Male", cluster == i)
                 mean_value <- mean(male_cluster_data$Value, na.rm = TRUE)
                 mean_age <- mean(male_cluster_data$Age, na.rm = TRUE)
                 sd_value <- sd(male_cluster_data$Value, na.rm = TRUE)
@@ -666,7 +629,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
                 cat(paste0("Cluster ", i, ":\n"))
                 cat(paste0("  Proportion: ", round(models$female$parameters$pro[i], 3), "\n"))
                 
-                female_cluster_data <- plot_data %>% filter(Gender == "Female", cluster == i)
+                female_cluster_data <- plot_data %>% dplyr::filter(Gender == "Female", cluster == i)
                 mean_value <- mean(female_cluster_data$Value, na.rm = TRUE)
                 mean_age <- mean(female_cluster_data$Age, na.rm = TRUE)
                 sd_value <- sd(female_cluster_data$Value, na.rm = TRUE)

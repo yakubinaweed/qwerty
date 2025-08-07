@@ -22,25 +22,6 @@ ui <- navbarPage(
       # Includes the custom CSS from the 'www' directory
       includeCSS("www/styles.css")
     ),
-    # Custom JavaScript to handle disabling the other tab during analysis
-    tags$script(HTML("
-      var analysisRunning = false;
-      Shiny.addCustomMessageHandler('analysisStatus', function(status) {
-        analysisRunning = status;
-        if (status) {
-          $('a[data-value=\"Subpopulation Detection (GMM)\"]').attr('data-toggle', 'disabled').addClass('disabled-tab-link');
-        } else {
-          $('a[data-value=\"Subpopulation Detection (GMM)\"]').attr('data-toggle', 'tab').removeClass('disabled-tab-link');
-        }
-      });
-      $(document).on('click', 'a[data-toggle=\"tab\"]', function(event) {
-        if (analysisRunning) {
-          event.preventDefault();
-          Shiny.setInputValue('tab_switch_blocked', new Date().getTime());
-          return false;
-        }
-      });
-    ")),
     sidebarLayout(
       sidebarPanel(
         style = "padding-right: 15px;",
