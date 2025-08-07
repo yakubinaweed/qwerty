@@ -53,6 +53,13 @@ ui <- navbarPage(
         selectInput(inputId = "col_age", label = "Select Column for Age:", choices = c("None" = ""), selected = ""),
         selectInput(inputId = "col_gender", label = "Select Column for Gender:", choices = c("None" = ""), selected = ""),
         radioButtons(inputId = "nbootstrap_speed", label = "Select Computation Speed:", choices = c("Fast", "Medium", "Slow"), selected = "Fast", inline = TRUE),
+        
+        # New: Radio buttons for model selection (removed "None" option)
+        radioButtons(inputId = "model_choice", label = "Select Transformation Model:",
+                     choices = c("BoxCox" = "BoxCox",
+                                 "modBoxCox" = "modBoxCox"),
+                     selected = "BoxCox", inline = TRUE), # Default to Box-Cox
+        
         # Action buttons for the analysis
         actionButton("analyze_btn", "Analyze", class = "btn-primary"),
         actionButton("reset_btn", "Reset File", class = "btn-secondary"),

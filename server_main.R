@@ -107,6 +107,8 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
     updateSelectInput(session, "col_value", choices = c("None" = ""), selected = "")
     updateSelectInput(session, "col_age", choices = c("None" = ""), selected = "")
     updateSelectInput(session, "col_gender", choices = c("None" = ""), selected = "")
+    # Reset model choice to default (Box-Cox)
+    updateRadioButtons(session, "model_choice", selected = "BoxCox")
   })
 
   # Observer for directory selection using shinyFiles
@@ -181,7 +183,8 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
         unit_input = input$unit_input,
         ref_low = input$ref_low,
         ref_high = input$ref_high,
-        enable_directory = input$enable_directory
+        enable_directory = input$enable_directory,
+        model_choice = input$model_choice # Get the selected model choice
       )
     })
     
@@ -189,9 +192,11 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
     
     tryCatch({
       nbootstrap_value <- switch(isolated_inputs$nbootstrap_speed, "Fast" = 1, "Medium" = 50, "Slow" = 200, 1)
-
-      # Run the main RefineR function
-      refiner_model <- refineR::findRI(Data = filtered_data[[isolated_inputs$col_value]], NBootstrap = nbootstrap_value)
+      
+      # Run the main RefineR function with the selected model (no more conditional do.call)
+      refiner_model <- refineR::findRI(Data = filtered_data[[isolated_inputs$col_value]],
+                                       NBootstrap = nbootstrap_value,
+                                       model = isolated_inputs$model_choice) # model is always provided now
       
       if (is.null(refiner_model) || inherits(refiner_model, "try-error")) {
         stop("RefineR model could not be generated. Check your input data and parameters.")
@@ -201,7 +206,13 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
       
       gender_text <- if (isolated_inputs$col_gender == "") "Combined" else paste0("Gender: ", isolated_inputs$gender_choice)
       
+      # Adjust plot title to include transformation model
+      model_text <- switch(isolated_inputs$model_choice,
+                           "BoxCox" = " (Box-Cox Transformed)",
+                           "modBoxCox" = " (Modulus Box-Cox Transformed)")
+
       plot_title_rv(paste0("Estimated Reference Intervals for ", isolated_inputs$col_value, 
+                           model_text,
                            " (", gender_text, 
                            ", Age: ", isolated_inputs$age_range[1], "-", isolated_inputs$age_range[2], ")"))
 
