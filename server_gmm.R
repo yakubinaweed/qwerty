@@ -118,6 +118,7 @@ plot_age_hgb <- function(df, value_col_name, age_col_name, male_hgb_transformed,
 
   plot_title <- paste(value_col_name, "vs", age_col_name, "by Subpopulation Cluster")
   
+  # Calculate cluster means
   cluster_means <- df %>%
     group_by(Gender, cluster) %>%
     summarise(mean_Age = mean(Age, na.rm = TRUE),
@@ -125,26 +126,35 @@ plot_age_hgb <- function(df, value_col_name, age_col_name, male_hgb_transformed,
               .groups = 'drop')
 
   ggplot(df, aes(x = Age, y = HGB, color = factor(cluster))) +
+    # Original design for points
     geom_point(position = position_jitter(width = 0.2, height = 0.2), alpha = 0.6) +
+    # Original design for ellipses
     stat_ellipse(geom = "polygon", aes(fill = factor(cluster)), alpha = 0.2, show.legend = FALSE, level = 0.95) +
+    # Original design for cluster means
     geom_point(data = cluster_means, aes(x = mean_Age, y = mean_HGB), shape = 4, size = 5, color = "red", stroke = 2) +
-    facet_wrap(~Gender) +
-    theme_minimal() +
+    facet_wrap(~Gender, labeller = as_labeller(function(x) paste(x, "Population"))) +
     labs(title = plot_title,
          x = age_col_name, y = value_col_name, color = "Cluster") +
+    # Original color palette
     scale_color_brewer(palette = "Set1") +
     scale_fill_brewer(palette = "Set1") +
+    # Theme adjustments based on your feedback
+    theme_light() +
     theme(
       plot.title = element_text(size = 20, face = "bold", hjust = 0.5, margin = margin(b = 20)),
-      strip.text = element_text(size = 14, face = "bold", color = "grey20"),
+      strip.text = element_text(size = 14, face = "bold", color = "black"),
+      # Light grey box for facet labels with no contour line
+      strip.background = element_rect(fill = "#EEEEEE", color = NA),
       axis.title.x = element_text(size = 14, margin = margin(t = 10)),
       axis.title.y = element_text(size = 14, margin = margin(r = 10)),
-      axis.text = element_text(size = 11, color = "grey30"),
+      axis.text = element_text(size = 11, color = "black"),
       legend.title = element_text(size = 12, face = "bold"),
-      legend.text = element_text(size = 10, color = "grey30"),
+      legend.text = element_text(size = 10, color = "black"),
       legend.position = "bottom",
       legend.background = element_rect(fill = "white", color = "grey90", size = 0.5, linetype = "solid"),
-      panel.grid.major = element_line(color = "grey90", size = 0.5),
+      # Boxed plot with lighter lines
+      panel.border = element_rect(colour = "#CCCCCC", fill = NA, size = 1),
+      panel.grid.major = element_line(color = "#F0F0F0", size = 0.5),
       panel.grid.minor = element_blank()
     )
 }
@@ -481,9 +491,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       div(class = "output-box",
           h4(class = "gmm-title", "BIC Criterion Results"),
           plotOutput("gmm_bic_plots", height = "400px"),
-          div(class = "spacing-div"),
           plotOutput("plot_output_gmm_bic", height = "600px"),
-          div(class = "spacing-div"),
           verbatimTextOutput("gmm_summary_output_bic")
       )
     )
