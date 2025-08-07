@@ -259,18 +259,22 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       age_col <- input$gmm_age_col
       gender_col <- input$gmm_gender_col
       gender_choice <- if (gender_col == "") "None" else input$gmm_gender_choice
+      
+      # Define columns to select dynamically to prevent crashing
+      value_col_sym <- rlang::sym(value_col)
+      age_col_sym <- rlang::sym(age_col)
 
-      # Correctly handle dynamic column selection for dplyr::select
-      cols_to_select_syms <- rlang::syms(c(value_col, age_col))
+      # Select columns explicitly based on whether a gender column is selected
       if (gender_col != "") {
-        cols_to_select_syms <- c(cols_to_select_syms, rlang::sym(gender_col))
+        gender_col_sym <- rlang::sym(gender_col)
+        gmm_data <- data %>%
+          dplyr::select(Value = !!value_col_sym, Age = !!age_col_sym, Gender_orig = !!gender_col_sym) %>%
+          na.omit()
+      } else {
+        gmm_data <- data %>%
+          dplyr::select(Value = !!value_col_sym, Age = !!age_col_sym) %>%
+          na.omit()
       }
-
-      gmm_data <- data %>%
-        dplyr::select(!!!cols_to_select_syms) %>%
-        setNames(c("Value", "Age", if (gender_col != "") "Gender_orig")) %>%
-        na.omit()
-
 
       if (nrow(gmm_data) == 0) {
         message_rv(list(text = "No complete rows for GMM after NA removal. Check data or selections.", type = "error"))
@@ -282,6 +286,22 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       incProgress(0.2, detail = "Splitting data by gender and transforming...")
 
       if (gender_col != "") {
+        # Check if any gender categories are present before processing
+        gender_matches <- gmm_data %>%
+          mutate(Gender = case_when(
+            grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
+            grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", Gender_orig, ignore.case = TRUE) ~ "Female",
+            TRUE ~ "Other"
+          )) %>%
+          filter(Gender %in% c("Male", "Female"))
+
+        if (nrow(gender_matches) == 0) {
+          message_rv(list(text = "Error: The selected gender column does not contain any recognizable 'Male' or 'Female' categories. Please check your data.", type = "error"))
+          analysis_running_rv(FALSE)
+          shinyjs::enable("tabs")
+          return(NULL)
+        }
+
         gmm_data <- gmm_data %>%
           mutate(Gender = case_when(
             grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
@@ -358,6 +378,11 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
               }, error = function(e) {
                 message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
               })
+            } else {
+              message_rv(list(text = "Error: No male data found after filtering. Please check the gender column and selection.", type = "error"))
+              analysis_running_rv(FALSE)
+              shinyjs::enable("tabs")
+              return(NULL)
             }
             # Process Female data if selected
             female_data <- gmm_data %>% filter(Gender == "Female")
@@ -380,6 +405,11 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
               }, error = function(e) {
                 message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
               })
+            } else {
+              message_rv(list(text = "Error: No female data found after filtering. Please check the data or gender column.", type = "error"))
+              analysis_running_rv(FALSE)
+              shinyjs::enable("tabs")
+              return(NULL)
             }
         }
 
@@ -406,7 +436,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
               message_rv(list(text = paste("Error running BIC GMM for male data:", e$message), type = "error"))
             })
           } else {
-              message_rv(list(text = "No male data found after filtering. Please check the gender column and selection.", type = "warning"))
+              message_rv(list(text = "Error: No male data found after filtering. Please check the gender column and selection.", type = "error"))
               analysis_running_rv(FALSE)
               shinyjs::enable("tabs")
               return(NULL)
@@ -435,7 +465,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
               message_rv(list(text = paste("Error running BIC GMM for female data:", e$message), type = "error"))
             })
           } else {
-              message_rv(list(text = "No female data found after filtering. Please check the data or gender column.", type = "warning"))
+              message_rv(list(text = "Error: No female data found after filtering. Please check the data or gender column.", type = "error"))
               analysis_running_rv(FALSE)
               shinyjs::enable("tabs")
               return(NULL)
