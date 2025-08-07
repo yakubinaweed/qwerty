@@ -26,7 +26,6 @@ server <- function(input, output, session) {
   gmm_uploaded_data_rv <- reactiveVal(NULL)
   gmm_processed_data_rv <- reactiveVal(NULL)
   gmm_transformation_details_rv <- reactiveVal(list(male_hgb_transformed = FALSE, female_hgb_transformed = FALSE))
-  gmm_models_rv <- reactiveVal(list(male = NULL, female = NULL))
   selected_dir_reactive <- reactiveVal(NULL)
   message_rv <- reactiveVal(list(type = "", text = ""))
   analysis_running_rv <- reactiveVal(FALSE)
@@ -66,5 +65,5 @@ server <- function(input, output, session) {
   
   # Call the modular server functions for each tab
   mainServer(input, output, session, data_reactive, selected_dir_reactive, message_rv, analysis_running_rv)
-  gmmServer(input, output, session, gmm_uploaded_data_rv, gmm_processed_data_rv, gmm_transformation_details_rv, gmm_models_rv, message_rv, analysis_running_rv)
+  gmmServer(input, output, session, gmm_uploaded_data_rv, gmm_processed_data_rv, gmm_transformation_details_rv, message_rv, analysis_running_rv)
 }
