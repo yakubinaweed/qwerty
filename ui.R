@@ -22,6 +22,30 @@ ui <- navbarPage(
       # Includes the custom CSS from the 'www' directory
       includeCSS("www/styles.css")
     ),
+    # Custom JavaScript to handle disabling the other tab during analysis
+    tags$script(HTML("
+      var analysisRunning = false;
+      Shiny.addCustomMessageHandler('analysisStatus', function(status) {
+        analysisRunning = status;
+        if (status) {
+          // Disable all tab links that are not currently active
+          $('a[data-toggle=\"tab\"]').each(function() {
+            if (!$(this).parent().hasClass('active')) {
+              $(this).addClass('disabled-tab-link');
+            }
+          });
+        } else {
+          // Re-enable all tab links
+          $('a.disabled-tab-link').removeClass('disabled-tab-link');
+        }
+      });
+      // Event handler to block clicks on disabled tabs
+      $(document).on('click', 'a.disabled-tab-link', function(event) {
+        event.preventDefault();
+        Shiny.setInputValue('tab_switch_blocked', new Date().getTime());
+        return false;
+      });
+    ")),
     sidebarLayout(
       sidebarPanel(
         style = "padding-right: 15px;",

@@ -282,94 +282,126 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
 
 
     analysis_running_rv(TRUE)
-    shinyjs::disable("tabs")
+    # Disable the analyze button and change its text
+    shinyjs::disable("run_gmm_analysis_btn")
+    shinyjs::runjs("$('#run_gmm_analysis_btn').text('Analyzing...');")
+    session$sendCustomMessage('analysisStatus', TRUE)
 
-    withProgress(message = 'Running GMM Analysis', value = 0, {
-      incProgress(0.1, detail = "Loading data...")
-
-      data <- gmm_uploaded_data_rv()
-      value_col <- input$gmm_value_col
-      age_col <- input$gmm_age_col
-      gender_col <- input$gmm_gender_col
-      gender_choice <- if (gender_col == "") "None" else input$gmm_gender_choice
-      
-      # Define columns to select dynamically to prevent crashing
-      value_col_sym <- rlang::sym(value_col)
-      age_col_sym <- rlang::sym(age_col)
-
-      # Select columns explicitly based on whether a gender column is selected
-      if (gender_col != "") {
-        gender_col_sym <- rlang::sym(gender_col)
-        gmm_data <- data %>%
-          dplyr::select(Value = !!value_col_sym, Age = !!age_col_sym, Gender_orig = !!gender_col_sym) %>%
-          na.omit()
-      } else {
-        gmm_data <- data %>%
-          dplyr::select(Value = !!value_col_sym, Age = !!age_col_sym) %>%
-          na.omit()
-      }
-
-      if (nrow(gmm_data) == 0) {
-        message_rv(list(text = "No complete rows for GMM after NA removal. Check data or selections.", type = "error"))
-        analysis_running_rv(FALSE)
-        shinyjs::enable("tabs")
-        return(NULL)
-      }
-
-      incProgress(0.2, detail = "Splitting data by gender and transforming...")
-
-      # Standardize gender column if present
-      if (gender_col != "") {
-        gmm_data <- gmm_data %>%
-          mutate(Gender = case_when(
-            grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
-            grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", Gender_orig, ignore.case = TRUE) ~ "Female",
-            TRUE ~ "Other"
-          )) %>%
-          filter(Gender %in% c("Male", "Female"))
-      } else {
-        # If no gender column, create a dummy group
-        gmm_data <- gmm_data %>%
-          mutate(Gender = "Combined")
-      }
-      
-      # Final check for empty data after filtering
-      if (nrow(gmm_data) == 0) {
-        message_rv(list(text = "Filtered dataset is empty after gender selection. Please check the data or gender column.", type = "warning"))
-        analysis_running_rv(FALSE)
-        shinyjs::enable("tabs")
-        return(NULL)
-      }
-
-      combined_clustered_data <- tibble()
-      male_value_transformed_flag <- FALSE
-      female_value_transformed_flag <- FALSE
-      combined_gmm_model_bic <- NULL
-      male_gmm_model_bic <- NULL
-      female_gmm_model_bic <- NULL
-      
-      # Use a list to store results for easier processing
-      results <- list(male = NULL, female = NULL, combined = NULL)
-
-      # Process data based on gender selection
-      if (gender_col == "" || gender_choice == "Both") {
-        if (gender_col == "") {
-          message("Running GMM on combined data...")
-          results$combined <- run_gmm_analysis_on_subset(
-            data_subset = gmm_data,
-            gender_label = "Combined",
-            value_col_name = value_col,
-            age_col_name = age_col,
-            message_rv = message_rv,
-            progress_increment = 0.6
-          )
-          if (!is.null(results$combined$model)) {
-            combined_gmm_model_bic <- results$combined$model
-            male_value_transformed_flag <- results$combined$transformed_flag
-            combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$combined$clustered_data)
-          }
+    tryCatch({
+      withProgress(message = 'Running GMM Analysis', value = 0, {
+        incProgress(0.1, detail = "Loading data...")
+  
+        data <- gmm_uploaded_data_rv()
+        value_col <- input$gmm_value_col
+        age_col <- input$gmm_age_col
+        gender_col <- input$gmm_gender_col
+        gender_choice <- if (gender_col == "") "None" else input$gmm_gender_choice
+        
+        # Define columns to select dynamically to prevent crashing
+        value_col_sym <- rlang::sym(value_col)
+        age_col_sym <- rlang::sym(age_col)
+  
+        # Select columns explicitly based on whether a gender column is selected
+        if (gender_col != "") {
+          gender_col_sym <- rlang::sym(gender_col)
+          gmm_data <- data %>%
+            dplyr::select(Value = !!value_col_sym, Age = !!age_col_sym, Gender_orig = !!gender_col_sym) %>%
+            na.omit()
         } else {
-          # Process Male data
+          gmm_data <- data %>%
+            dplyr::select(Value = !!value_col_sym, Age = !!age_col_sym) %>%
+            na.omit()
+        }
+  
+        if (nrow(gmm_data) == 0) {
+          message_rv(list(text = "No complete rows for GMM after NA removal. Check data or selections.", type = "error"))
+          return(NULL)
+        }
+  
+        incProgress(0.2, detail = "Splitting data by gender and transforming...")
+  
+        # Standardize gender column if present
+        if (gender_col != "") {
+          gmm_data <- gmm_data %>%
+            mutate(Gender = case_when(
+              grepl("male|m|man|jongen(s)?|heren|mannelijk(e)?", Gender_orig, ignore.case = TRUE) ~ "Male",
+              grepl("female|f|vrouw(en)?|v|meisje(s)?|dame|mevr|vrouwelijke", Gender_orig, ignore.case = TRUE) ~ "Female",
+              TRUE ~ "Other"
+            )) %>%
+            filter(Gender %in% c("Male", "Female"))
+        } else {
+          # If no gender column, create a dummy group
+          gmm_data <- gmm_data %>%
+            mutate(Gender = "Combined")
+        }
+        
+        # Final check for empty data after filtering
+        if (nrow(gmm_data) == 0) {
+          message_rv(list(text = "Filtered dataset is empty after gender selection. Please check the data or gender column.", type = "warning"))
+          return(NULL)
+        }
+  
+        combined_clustered_data <- tibble()
+        male_value_transformed_flag <- FALSE
+        female_value_transformed_flag <- FALSE
+        combined_gmm_model_bic <- NULL
+        male_gmm_model_bic <- NULL
+        female_gmm_model_bic <- NULL
+        
+        # Use a list to store results for easier processing
+        results <- list(male = NULL, female = NULL, combined = NULL)
+  
+        # Process data based on gender selection
+        if (gender_col == "" || gender_choice == "Both") {
+          if (gender_col == "") {
+            message("Running GMM on combined data...")
+            results$combined <- run_gmm_analysis_on_subset(
+              data_subset = gmm_data,
+              gender_label = "Combined",
+              value_col_name = value_col,
+              age_col_name = age_col,
+              message_rv = message_rv,
+              progress_increment = 0.6
+            )
+            if (!is.null(results$combined$model)) {
+              combined_gmm_model_bic <- results$combined$model
+              male_value_transformed_flag <- results$combined$transformed_flag
+              combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$combined$clustered_data)
+            }
+          } else {
+            # Process Male data
+            male_data <- gmm_data %>% dplyr::filter(Gender == "Male")
+            results$male <- run_gmm_analysis_on_subset(
+              data_subset = male_data,
+              gender_label = "Male",
+              value_col_name = value_col,
+              age_col_name = age_col,
+              message_rv = message_rv,
+              progress_increment = 0.3
+            )
+            if (!is.null(results$male$model)) {
+              male_gmm_model_bic <- results$male$model
+              male_value_transformed_flag <- results$male$transformed_flag
+              combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$male$clustered_data)
+            }
+  
+            # Process Female data
+            female_data <- gmm_data %>% dplyr::filter(Gender == "Female")
+            results$female <- run_gmm_analysis_on_subset(
+              data_subset = female_data,
+              gender_label = "Female",
+              value_col_name = value_col,
+              age_col_name = age_col,
+              message_rv = message_rv,
+              progress_increment = 0.3
+            )
+            if (!is.null(results$female$model)) {
+              female_gmm_model_bic <- results$female$model
+              female_value_transformed_flag <- results$female$transformed_flag
+              combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$female$clustered_data)
+            }
+          }
+        } else if (gender_choice == "Male") {
           male_data <- gmm_data %>% dplyr::filter(Gender == "Male")
           results$male <- run_gmm_analysis_on_subset(
             data_subset = male_data,
@@ -377,15 +409,14 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             value_col_name = value_col,
             age_col_name = age_col,
             message_rv = message_rv,
-            progress_increment = 0.3
+            progress_increment = 0.6
           )
           if (!is.null(results$male$model)) {
             male_gmm_model_bic <- results$male$model
             male_value_transformed_flag <- results$male$transformed_flag
             combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$male$clustered_data)
           }
-
-          # Process Female data
+        } else if (gender_choice == "Female") {
           female_data <- gmm_data %>% dplyr::filter(Gender == "Female")
           results$female <- run_gmm_analysis_on_subset(
             data_subset = female_data,
@@ -393,7 +424,7 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             value_col_name = value_col,
             age_col_name = age_col,
             message_rv = message_rv,
-            progress_increment = 0.3
+            progress_increment = 0.6
           )
           if (!is.null(results$female$model)) {
             female_gmm_model_bic <- results$female$model
@@ -401,62 +432,38 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
             combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$female$clustered_data)
           }
         }
-      } else if (gender_choice == "Male") {
-        male_data <- gmm_data %>% dplyr::filter(Gender == "Male")
-        results$male <- run_gmm_analysis_on_subset(
-          data_subset = male_data,
-          gender_label = "Male",
-          value_col_name = value_col,
-          age_col_name = age_col,
-          message_rv = message_rv,
-          progress_increment = 0.6
-        )
-        if (!is.null(results$male$model)) {
-          male_gmm_model_bic <- results$male$model
-          male_value_transformed_flag <- results$male$transformed_flag
-          combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$male$clustered_data)
+        
+        # Update reactive values with the correct models and transformation details
+        gmm_models_bic_rv(list(
+          combined = combined_gmm_model_bic,
+          male = male_gmm_model_bic,
+          female = female_gmm_model_bic
+        ))
+        gmm_transformation_details_rv(list(
+          male_value_transformed = male_value_transformed_flag, 
+          female_value_transformed = female_value_transformed_flag
+        ))
+  
+        if (nrow(combined_clustered_data) > 0) {
+          gmm_processed_data_rv(list(bic = combined_clustered_data))
+          message_rv(list(text = "GMM analysis complete!", type = "success"))
+        } else {
+          message_rv(list(text = "No data available after GMM processing for plotting/summary.", type = "error"))
+          gmm_processed_data_rv(NULL)
         }
-      } else if (gender_choice == "Female") {
-        female_data <- gmm_data %>% dplyr::filter(Gender == "Female")
-        results$female <- run_gmm_analysis_on_subset(
-          data_subset = female_data,
-          gender_label = "Female",
-          value_col_name = value_col,
-          age_col_name = age_col,
-          message_rv = message_rv,
-          progress_increment = 0.6
-        )
-        if (!is.null(results$female$model)) {
-          female_gmm_model_bic <- results$female$model
-          female_value_transformed_flag <- results$female$transformed_flag
-          combined_clustered_data <- dplyr::bind_rows(combined_clustered_data, results$female$clustered_data)
-        }
-      }
-      
-      # Update reactive values with the correct models and transformation details
-      gmm_models_bic_rv(list(
-        combined = combined_gmm_model_bic,
-        male = male_gmm_model_bic,
-        female = female_gmm_model_bic
-      ))
-      gmm_transformation_details_rv(list(
-        male_value_transformed = male_value_transformed_flag, 
-        female_value_transformed = female_value_transformed_flag
-      ))
-
-      if (nrow(combined_clustered_data) > 0) {
-        gmm_processed_data_rv(list(bic = combined_clustered_data))
-        message_rv(list(text = "GMM analysis complete!", type = "success"))
-      } else {
-        message_rv(list(text = "No data available after GMM processing for plotting/summary.", type = "error"))
-        gmm_processed_data_rv(NULL)
-      }
-
-      incProgress(0.1, detail = "Generating plots and summaries...")
+  
+        incProgress(0.1, detail = "Generating plots and summaries...")
+      })
+    }, error = function(e) {
+      # Handle any analysis errors here
+      message_rv(list(text = paste("Analysis Error:", e$message), type = "danger"))
+      gmm_processed_data_rv(NULL)
+    }, finally = {
+      analysis_running_rv(FALSE)
+      shinyjs::enable("run_gmm_analysis_btn")
+      shinyjs::runjs("$('#run_gmm_analysis_btn').text('Analyze');")
+      session$sendCustomMessage('analysisStatus', FALSE)
     })
-
-    analysis_running_rv(FALSE)
-    shinyjs::enable("tabs")
   })
 
   # Observer for the Reset button on the GMM tab

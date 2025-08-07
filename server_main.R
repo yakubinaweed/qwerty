@@ -193,7 +193,6 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
     shinyjs::runjs("$('#analyze_btn').text('Analyzing...');")
     
     analysis_running_rv(TRUE)
-    message_rv(list(text = "Analysis started...", type = "info"))
     session$sendCustomMessage('analysisStatus', TRUE)
 
     # Isolate inputs to prevent re-running the analysis on every change
@@ -262,7 +261,6 @@ mainServer <- function(input, output, session, data_reactive, selected_dir_react
       refiner_model_rv(NULL) # Set to NULL to clear plot and summary
       print(error_message)
     }, finally = {
-      # Re-enable button and restore text when analysis finishes
       analysis_running_rv(FALSE)
       session$sendCustomMessage('analysisStatus', FALSE)
       shinyjs::enable("analyze_btn")

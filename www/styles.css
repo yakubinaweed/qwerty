@@ -119,3 +119,11 @@
 .spacing-div {
   margin-top: 3rem; /* Adjust this value to increase or decrease the spacing */
 }
+
+/* Add this new CSS rule to your existing styles.css file */
+.disabled-tab-link {
+  pointer-events: none; /* Prevents cursor events */
+  color: #ccc !important; /* Changes text color to grey */
+  background-color: #f8f9fa !important; /* Lighter background */
+  cursor: not-allowed !important; /* Changes cursor to "not allowed" symbol */
+}
