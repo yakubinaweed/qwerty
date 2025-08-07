@@ -491,12 +491,14 @@ gmmServer <- function(input, output, session, gmm_uploaded_data_rv, gmm_processe
       div(class = "output-box",
           h4(class = "gmm-title", "BIC Criterion Results"),
           plotOutput("gmm_bic_plots", height = "400px"),
+          div(class = "spacing-div"), # This adds spacing after the BIC plot
           plotOutput("plot_output_gmm_bic", height = "600px"),
+          div(class = "spacing-div"), # This adds spacing before the summary
           verbatimTextOutput("gmm_summary_output_bic")
       )
     )
   })
-
+  
   output$gmm_bic_plots <- renderPlot({
     models <- gmm_models_bic_rv()
 
