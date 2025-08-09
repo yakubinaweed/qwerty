@@ -17,6 +17,7 @@ library(ggplot2)
 # Source the server modules for each tab
 source("server_main.R")
 source("server_gmm.R")
+source("server_refiner_parallel.R")
 
 server <- function(input, output, session) {
   
@@ -66,4 +67,5 @@ server <- function(input, output, session) {
   # Call the modular server functions for each tab
   mainServer(input, output, session, data_reactive, selected_dir_reactive, message_rv, analysis_running_rv)
   gmmServer(input, output, session, gmm_uploaded_data_rv, gmm_processed_data_rv, gmm_transformation_details_rv, message_rv, analysis_running_rv)
+  refinerParallelServer(input, output, session, analysis_running_rv, message_rv)
 }
